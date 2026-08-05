@@ -1,0 +1,11 @@
+{
+  "appId": "com.huanyu.chat",
+  "appName": "幻语 AI",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
