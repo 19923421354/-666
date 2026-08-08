@@ -33,15 +33,36 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, app: 'xingyu-chat', time: Date.now() })
 })
 
-// 应用内更新信息（前端「检查更新」优先读取；可编辑 config.json 配置）
-app.get('/api/update.json', (req, res) => {
+// 应用内更新信息（前端「检查更新」读取；未配置时实时代理 GitHub Releases 最新版本）
+app.get('/api/update.json', async (req, res) => {
   const cfg = loadConfig()
-  const update = cfg.update || {}
-  res.json({
-    version: update.version || '1.2.0',
-    notes: update.notes || '星语 AI 更新信息，请查看 GitHub Releases',
-    apkUrl: update.apkUrl || '',
-  })
+  // 自托管可手动指定版本信息，优先使用
+  if (cfg.update && cfg.update.version) {
+    return res.json({
+      version: cfg.update.version,
+      notes: cfg.update.notes || '',
+      apkUrl: cfg.update.apkUrl || '',
+    })
+  }
+  // 未配置则实时查询 GitHub Releases，保证「应用内更新」始终拿到最新版本
+  try {
+    const r = await fetch('https://api.github.com/repos/19923421354/xingyu/releases/latest', {
+      headers: { Accept: 'application/vnd.github+json' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (r.ok) {
+      const j = await r.json()
+      const asset = (j.assets || []).find((a) => (a.name || '').toLowerCase().endsWith('.apk'))
+      return res.json({
+        version: (j.tag_name || '').replace(/^v/i, ''),
+        notes: j.body || '',
+        apkUrl: asset ? asset.browser_download_url : '',
+      })
+    }
+  } catch (e) {
+    // GitHub 不可达则返回当前版本
+  }
+  res.json({ version: '1.2.0', notes: '', apkUrl: '' })
 })
 
 // 接口代理：把前端请求转发到 OpenAI 兼容服务（SSE 流式）
