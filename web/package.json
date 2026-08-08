@@ -11,7 +11,7 @@
   "dependencies": {
     "@capacitor/android": "^6.2.1",
     "@capacitor/core": "^6.2.0",
-    "@huggingface/transformers": "file:../../tmp/opencode/transformers.tgz",
+    "@huggingface/transformers": "^3.8.1",
     "vue": "^3.4.38",
     "vue-router": "^4.4.5"
   },
