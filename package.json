@@ -1,8 +1,8 @@
 {
-  "name": "huanyu-chat",
+  "name": "xingyu-chat",
   "version": "1.0.0",
   "private": true,
-  "description": "幻语 AI - 开源免费、可本地部署的 AI 角色扮演聊天应用",
+  "description": "星语 AI - 开源免费、可本地部署的 AI 角色扮演聊天应用",
   "scripts": {
     "web:dev": "npm --prefix web run dev",
     "web:build": "npm --prefix web run build",

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 幻语 AI 桌面版启动脚本
+# 星语 AI 桌面版启动脚本
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

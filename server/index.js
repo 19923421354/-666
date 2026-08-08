@@ -1,4 +1,4 @@
-// 幻语 AI 本地部署服务器
+// 星语 AI 本地部署服务器
 // 用途：静态托管前端 + 可选的 /api/chat 接口代理，方便局域网共享 / 桌面版启动。
 import express from 'express'
 import path from 'path'
@@ -21,15 +21,15 @@ function loadConfig() {
     // ignore
   }
   return {
-    provider: process.env.HY_PROVIDER || cfg.provider || 'offline',
-    baseUrl: process.env.HY_BASE_URL || cfg.baseUrl || '',
-    apiKey: process.env.HY_API_KEY || cfg.apiKey || '',
-    model: process.env.HY_MODEL || cfg.model || '',
+    provider: process.env.XY_PROVIDER || cfg.provider || 'offline',
+    baseUrl: process.env.XY_BASE_URL || cfg.baseUrl || '',
+    apiKey: process.env.XY_API_KEY || cfg.apiKey || '',
+    model: process.env.XY_MODEL || cfg.model || '',
   }
 }
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, app: 'huanyu-chat', time: Date.now() })
+  res.json({ ok: true, app: 'xingyu-chat', time: Date.now() })
 })
 
 // 接口代理：把前端请求转发到 OpenAI 兼容服务（SSE 流式）
@@ -43,7 +43,7 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: '服务端未配置接口，请在 config.json 或环境变量中设置' })
   }
   const target = (cfg.baseUrl || '').replace(/\/+$/, '')
-  if (!target) return res.status(400).json({ error: '未配置接口地址 HY_BASE_URL' })
+  if (!target) return res.status(400).json({ error: '未配置接口地址 XY_BASE_URL' })
 
   try {
     const upstream = await fetch(target + '/chat/completions', {
@@ -98,5 +98,5 @@ if (fs.existsSync(dist)) {
 }
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`幻语 AI 服务已启动: http://localhost:${PORT}`)
+  console.log(`星语 AI 服务已启动: http://localhost:${PORT}`)
 })

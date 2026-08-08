@@ -10,3 +10,5 @@ server/node_modules/
 web/dist/
 web/android/keystore/
 web/android/app/src/main/assets/public/
+# 模型权重为可下载资产，不纳入版本库（见 web/public/models/README.md）
+web/public/models/

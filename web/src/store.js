@@ -1,6 +1,6 @@
 import { reactive, watch } from 'vue'
 
-const P = 'huanyu.v1.'
+const P = 'xingyu.v1.'
 
 function storageGet(key, fallback) {
   try {
@@ -26,7 +26,7 @@ export function uid() {
 }
 
 export const defaultSettings = () => ({
-  provider: 'offline',
+  provider: 'local',
   openai: { baseUrl: '', apiKey: '', model: '' },
   ollama: { baseUrl: 'http://localhost:11434/v1', model: '' },
   theme: 'dark',
@@ -181,7 +181,7 @@ export function deleteCharacter(charId) {
 export function exportAll() {
   return JSON.stringify(
     {
-      app: 'huanyu-chat',
+      app: 'xingyu-chat',
       version: 1,
       exportedAt: Date.now(),
       settings: db.settings,
@@ -196,7 +196,7 @@ export function exportAll() {
 export function importAll(text) {
   try {
     const data = JSON.parse(text)
-    if (!data || data.app !== 'huanyu-chat' || !Array.isArray(data.characters)) {
+    if (!data || data.app !== 'xingyu-chat' || !Array.isArray(data.characters)) {
       return { ok: false, msg: '文件格式不正确' }
     }
     db.characters = data.characters

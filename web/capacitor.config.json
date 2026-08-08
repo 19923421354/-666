@@ -1,6 +1,6 @@
 {
-  "appId": "com.huanyu.chat",
-  "appName": "幻语 AI",
+  "appId": "com.xingyu.chat",
+  "appName": "星语 AI",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"

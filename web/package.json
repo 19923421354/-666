@@ -1,5 +1,5 @@
 {
-  "name": "huanyu-web",
+  "name": "xingyu-web",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -11,6 +11,7 @@
   "dependencies": {
     "@capacitor/android": "^6.2.1",
     "@capacitor/core": "^6.2.0",
+    "@huggingface/transformers": "file:../../tmp/opencode/transformers.tgz",
     "vue": "^3.4.38",
     "vue-router": "^4.4.5"
   },

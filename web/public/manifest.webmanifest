@@ -1,11 +1,11 @@
 {
-  "name": "幻语 AI",
-  "short_name": "幻语",
-  "description": "开源免费、可本地部署的 AI 角色扮演聊天应用",
+  "name": "星语 AI",
+  "short_name": "星语",
+  "description": "开源免费、内置本地 AI 模型的 AI 角色扮演聊天应用",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#14161d",
-  "theme_color": "#14161d",
+  "background_color": "#1b1035",
+  "theme_color": "#1b1035",
   "lang": "zh-CN",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },

@@ -162,7 +162,7 @@ export function analyzeIntent(text) {
   if (/你是谁|你叫什么|你多大了|你几岁|你是什么|介绍一下你|你从哪|你住哪/.test(t)) return 'whoareyou'
   if (/喜欢你|爱你|想你|抱抱|亲亲|想你了|好喜欢你/.test(t)) return 'love'
   if (/谢谢你|谢谢|感谢|多谢/.test(t)) return 'thanks'
-  if (/难过|伤心|不开心|好烦|心烦|好累|委屈|想哭|哭了|压力|孤独|孤单|焦虑|失眠|难受|痛苦|绝望|分手/.test(t)) return 'sad'
+  if (/难过|伤心|不开心|好烦|心烦|好累|委屈|想哭|哭了|压力|孤独|孤单|焦虑|失眠|难受|痛苦|绝望|分手|心情不好|郁闷|沮丧|心累|崩溃|被骂|吵架|失恋|倒霉|烦死/.test(t)) return 'sad'
   if (/好可爱|好漂亮|真好看|好厉害|真棒|真牛|好帅|好美|可爱死|夸你/.test(t)) return 'compliment'
   if (/太棒|好耶|哈哈|开心|高兴|超开心|太爽|赢啦|成功/.test(t)) return 'happy'
   if (/好饿|饿了|没吃|吃饭|干饭|吃的什么/.test(t)) return 'hungry'

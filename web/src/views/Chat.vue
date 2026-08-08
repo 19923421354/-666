@@ -4,8 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { db, charConversations, getActiveConversation, getActiveMessages, addMessage, newConversation, setActiveConversation, deleteConversation, renameConversation, updateMessage, uid, getProfile } from '../store'
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
-import { generateReply, extractProfile } from '../engine/offline'
-import { buildMessages, resolveProvider, requestChat } from '../engine/providers'
+import { chatReply } from '../engine/chat'
+import { extractProfile } from '../engine/offline'
 import { speak, stopSpeak, ttsEnabled, ttsSupported } from '../engine/tts'
 
 const route = useRoute()
@@ -128,29 +128,31 @@ async function generate() {
   currentMsgId = msgId
   addMessage(c.id, { id: msgId, role: 'assistant', content: '', ts: Date.now(), thinking: true })
   const history = getActiveMessages(c).slice(0, -1)
+  const modelLoading = settings.provider === 'local'
+
+  if (modelLoading) {
+    updateMessage(c.id, getActiveConversation(c).id, msgId, {
+      content: '正在唤醒内置 AI 模型…',
+      thinking: false,
+    })
+  }
+
+  controller = new AbortController()
 
   try {
-    if (settings.provider === 'offline') {
-      await new Promise((r) => setTimeout(r, 350 + Math.random() * 500))
-      const reply = generateReply(c, history, profile.value)
-      updateMessage(c.id, getActiveConversation(c).id, msgId, { content: reply, thinking: false })
-      if (ttsEnabled()) speak(reply)
-      return
-    }
-
-    const { baseUrl, apiKey, model } = resolveProvider(settings)
-    const messages = buildMessages(c, history, settings, profile.value)
-    const full = await requestChat(baseUrl, apiKey, model, messages, {
-      maxTokens: 600,
-      onDelta: (d) => {
-        streamTick.value++
-        const conv = getActiveConversation(c)
-        updateMessage(c.id, conv.id, msgId, {
-          content: (conv.messages.find((m) => m.id === msgId)?.content || '') + d,
-          thinking: false,
-        })
-      },
-    })
+    const full = await chatReply(
+      { character: c, history, profile: profile.value, settings },
+      {
+        signal: controller.signal,
+        onDelta: (d) => {
+          streamTick.value++
+          const conv = getActiveConversation(c)
+          const prev = conv.messages.find((m) => m.id === msgId)?.content || ''
+          const base = prev === '正在唤醒内置 AI 模型…' ? '' : prev
+          updateMessage(c.id, conv.id, msgId, { content: base + d, thinking: false })
+        },
+      }
+    )
     updateMessage(c.id, getActiveConversation(c).id, msgId, {
       content: full,
       thinking: false,
@@ -159,20 +161,21 @@ async function generate() {
     if (ttsEnabled() && full) speak(full)
   } catch (e) {
     const isAbort = e && (e.aborted || e.name === 'AbortError')
-    updateMessage(c.id, getActiveConversation(c).id, msgId, {
-      content: isAbort ? '' : (e && e.message) || '出错了，请重试',
+    const conv = getActiveConversation(c)
+    const prev = conv.messages.find((m) => m.id === msgId)?.content || ''
+    updateMessage(c.id, conv.id, msgId, {
+      content: isAbort ? (prev === '正在唤醒内置 AI 模型…' ? '' : prev) : (e && e.message) || '出错了，请重试',
       thinking: false,
       error: !isAbort,
     })
     if (isAbort) {
-      // 停止时清掉空消息，让用户重新发送
-      const conv = getActiveConversation(c)
       const i = conv.messages.findIndex((m) => m.id === msgId)
       if (i >= 0 && !conv.messages[i].content) conv.messages.splice(i, 1)
     }
   } finally {
     generating.value = false
     currentMsgId = null
+    if (controller) controller = null
   }
 }
 

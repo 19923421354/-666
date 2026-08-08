@@ -30,9 +30,9 @@ const list = computed(() => {
   <div class="page home">
     <header class="top">
       <div class="brand">
-        <div class="logo">幻</div>
+        <div class="logo">星</div>
         <div>
-          <h1>幻语 AI</h1>
+          <h1>星语 AI</h1>
           <p>你的 AI 角色扮演伙伴</p>
         </div>
       </div>

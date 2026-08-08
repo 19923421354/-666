@@ -12,7 +12,8 @@ const importMsg = ref('')
 const fileInput = ref(null)
 
 const providers = [
-  { id: 'offline', name: '本地内置对话（免费离线）', desc: '无需任何接口与网络，使用内置角色扮演引擎' },
+  { id: 'local', name: '星语内置 AI（真·本地推理）', desc: '内置 Qwen2.5-0.5B 模型，离线运行，免费无需网络' },
+  { id: 'offline', name: '轻量对话（离线兜底）', desc: '无需任何接口与网络，使用内置角色扮演引擎，响应快' },
   { id: 'ollama', name: 'Ollama 本地模型', desc: '连接你自己电脑上运行的 Ollama，完全本地、免费' },
   { id: 'openai', name: 'OpenAI 兼容接口', desc: '支持 DeepSeek / 通义 / GLM / OpenAI 等任意兼容服务' },
 ]
@@ -22,7 +23,7 @@ function doExport() {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = '幻语AI-备份-' + new Date().toISOString().slice(0, 10) + '.json'
+  a.download = '星语AI-备份-' + new Date().toISOString().slice(0, 10) + '.json'
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -129,7 +130,7 @@ function doReset() {
     <div class="group">
       <div class="group-title">关于</div>
       <div class="about">
-        <p><b>幻语 AI</b> v1.0.0</p>
+        <p><b>星语 AI</b> v1.0.0</p>
         <p>开源免费的 AI 角色扮演聊天应用。数据全部保存在本机，不收集任何个人信息。</p>
         <p>内容仅供娱乐，AI 回复由程序生成，不构成任何建议。</p>
       </div>

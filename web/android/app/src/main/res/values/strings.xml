@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">幻语 AI</string>
-    <string name="title_activity_main">幻语 AI</string>
-    <string name="package_name">com.huanyu.chat</string>
-    <string name="custom_url_scheme">com.huanyu.chat</string>
+    <string name="app_name">星语 AI</string>
+    <string name="title_activity_main">星语 AI</string>
+    <string name="package_name">com.xingyu.chat</string>
+    <string name="custom_url_scheme">com.xingyu.chat</string>
 </resources>

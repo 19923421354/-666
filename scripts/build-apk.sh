@@ -1,5 +1,5 @@
 #!/bin/bash
-# 幻语 AI 一键构建脚本：构建前端 + 生成 Android APK
+# 星语 AI 一键构建脚本：构建前端 + 生成 Android APK
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -18,6 +18,6 @@ echo "[3/3] 构建 Android APK..."
 (cd web/android && ./gradlew assembleRelease --no-daemon)
 
 mkdir -p "$ROOT/dist"
-cp "$ROOT/web/android/app/build/outputs/apk/release/app-release.apk" "$ROOT/dist/幻语AI-v1.0.0.apk"
+cp "$ROOT/web/android/app/build/outputs/apk/release/app-release.apk" "$ROOT/dist/星语AI-v1.0.0.apk"
 echo ""
-echo "构建完成，安装包位于: $ROOT/dist/幻语AI-v1.0.0.apk"
+echo "构建完成，安装包位于: $ROOT/dist/星语AI-v1.0.0.apk"

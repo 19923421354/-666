@@ -1,4 +1,4 @@
-const CACHE = 'huanyu-v1'
+const CACHE = 'xingyu-v1'
 
 self.addEventListener('install', () => {
   self.skipWaiting()
@@ -18,6 +18,10 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url)
   if (url.origin !== location.origin) return
   if (url.pathname.startsWith('/api')) return
+  if (url.pathname.startsWith('/models/') || url.pathname.startsWith('/wasm/')) {
+    event.respondWith(fetch(req))
+    return
+  }
 
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
