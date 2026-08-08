@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { db, upsertCharacter, deleteCharacter, uid } from '../store'
+import { db, upsertCharacter, deleteCharacter, uid, parseCharacterImport } from '../store'
 import { STYLES } from '../engine/offline'
 import { GRADIENT_PRESETS } from '../data/presets'
 import Avatar from '../components/Avatar.vue'
@@ -49,6 +49,60 @@ if (editing.value) {
 const confirmOpen = ref(false)
 const avatarMode = ref('gradient')
 const fileInput = ref(null)
+const importInput = ref(null)
+
+function currentObject() {
+  return {
+    id: form.value.id || uid(),
+    name: form.value.name.trim(),
+    tagline: form.value.tagline.trim(),
+    style: form.value.style,
+    styleDesc: form.value.styleDesc.trim(),
+    persona: form.value.persona.trim(),
+    world: form.value.world.trim(),
+    greeting: form.value.greeting.trim(),
+    exampleDialogs: form.value.exampleDialogs
+      .split(/\n{2,}/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+    avatar: { ...form.value.avatar, initial: form.value.avatar.type === 'gradient' ? form.value.name.slice(0, 1) : undefined },
+    updatedAt: Date.now(),
+  }
+}
+
+function exportCharacter() {
+  const c = currentObject()
+  if (!c.name) {
+    alert('请先填写角色名称')
+    return
+  }
+  const blob = new Blob(
+    [JSON.stringify({ app: 'xingyu-chat', type: 'character', version: 1, character: c }, null, 2)],
+    { type: 'application/json' }
+  )
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${c.name}-角色卡.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function onImportChar(e) {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      const imported = parseCharacterImport(String(reader.result))
+      upsertCharacter(imported)
+      router.replace({ path: `/chat/${imported.id}` })
+    } catch (err) {
+      alert('解析角色卡失败：' + ((err && err.message) || err))
+    }
+  }
+  reader.readAsText(file)
+}
 
 function pickGradient([from, to]) {
   form.value.avatar = { type: 'gradient', from, to, initial: form.value.name.slice(0, 1) || '幻' }
@@ -82,22 +136,8 @@ function save() {
     alert('请填写角色名称')
     return
   }
-  const c = {
-    id: form.value.id || uid(),
-    name: form.value.name.trim(),
-    tagline: form.value.tagline.trim(),
-    style: form.value.style,
-    styleDesc: form.value.styleDesc.trim(),
-    persona: form.value.persona.trim(),
-    world: form.value.world.trim(),
-    greeting: form.value.greeting.trim(),
-    exampleDialogs: form.value.exampleDialogs
-      .split(/\n{2,}/)
-      .map((s) => s.trim())
-      .filter(Boolean),
-    avatar: { ...form.value.avatar, initial: form.value.avatar.type === 'gradient' ? form.value.name.slice(0, 1) : undefined },
-    updatedAt: Date.now(),
-  }
+  const c = currentObject()
+  c.id = form.value.id || uid()
   upsertCharacter(c)
   router.push({ path: `/chat/${c.id}` })
 }
@@ -182,8 +222,11 @@ function remove() {
 
       <div class="actions">
         <button v-if="editing" class="btn btn-danger" @click="confirmOpen = true">删除角色</button>
+        <button class="btn btn-ghost" @click="exportCharacter">导出卡片</button>
+        <button class="btn btn-ghost" @click="importInput.click()">导入卡片</button>
         <button class="btn btn-primary" @click="save">保存并开始聊天</button>
       </div>
+      <input ref="importInput" type="file" accept="application/json,.json" style="display:none" @change="onImportChar" />
     </div>
 
     <Sheet :show="confirmOpen" @close="confirmOpen = false">

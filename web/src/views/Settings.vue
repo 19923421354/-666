@@ -97,6 +97,20 @@ function doReset() {
     </div>
 
     <div class="group">
+      <div class="group-title">生成参数</div>
+      <div class="row">
+        <span>温度（创造度）</span>
+        <span class="val">{{ Number(db.settings.local.temperature).toFixed(1) }}</span>
+      </div>
+      <input class="slider" type="range" min="0.1" max="1.5" step="0.1" v-model.number="db.settings.local.temperature" />
+      <div class="row">
+        <span>最大回复长度</span>
+        <input class="inline-input" type="number" min="40" max="600" step="20" v-model.number="db.settings.local.maxTokens" />
+      </div>
+      <div class="hint">温度越高回复越有想象力，越低越稳定。适用于内置 AI 与接口引擎。</div>
+    </div>
+
+    <div class="group">
       <div class="group-title">外观与体验</div>
       <div class="row">
         <span>深色模式</span>
@@ -130,7 +144,7 @@ function doReset() {
     <div class="group">
       <div class="group-title">关于</div>
       <div class="about">
-        <p><b>星语 AI</b> v1.0.0</p>
+        <p><b>星语 AI</b> v1.1.0</p>
         <p>开源免费的 AI 角色扮演聊天应用。数据全部保存在本机，不收集任何个人信息。</p>
         <p>内容仅供娱乐，AI 回复由程序生成，不构成任何建议。</p>
       </div>
@@ -217,6 +231,16 @@ function doReset() {
   font-size: 12px;
   color: var(--text-faint);
   margin-top: 4px;
+}
+.slider {
+  width: 100%;
+  accent-color: var(--accent-a);
+  margin: 4px 0 8px;
+}
+.row .val {
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 14px;
 }
 .row {
   display: flex;

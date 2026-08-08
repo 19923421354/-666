@@ -1,5 +1,5 @@
 // 本地 AI 模型引擎：内置 Qwen2.5-0.5B-Instruct fp16 模型，完全离线推理。
-// 通过 transformers.js + onnxruntime-web (WASM) 在浏览器/WebView 内运行，无需服务器、无需 API。
+// 通过 transformers.js + onnxruntime-web (WASM / WebGPU) 在浏览器/WebView 内运行，无需服务器、无需 API。
 
 import { reactive } from 'vue'
 
@@ -10,6 +10,8 @@ export const MODEL_LABEL = 'Qwen2.5-0.5B（内置）'
 export const modelState = reactive({
   status: 'idle', // idle | loading | ready | error
   error: '',
+  device: '',
+  progress: { loaded: 0, total: 0, text: '' },
 })
 
 let pipePromise = null
@@ -33,6 +35,10 @@ export function isLocalReady() {
   return modelState.status === 'ready' && !!pipeInstance
 }
 
+function supportsWebGPU() {
+  return typeof navigator !== 'undefined' && !!navigator.gpu
+}
+
 export async function loadModel() {
   if (pipeInstance) return pipeInstance
   if (pipePromise) return pipePromise
@@ -40,23 +46,65 @@ export async function loadModel() {
   modelState.status = 'loading'
   modelState.error = ''
   pipePromise = (async () => {
+    const { pipeline } = await getTransformers()
+    const device = supportsWebGPU() ? 'webgpu' : 'wasm'
     try {
-      const { pipeline } = await getTransformers()
-      const gen = await pipeline('text-generation', MODEL_ID, {
-        dtype: DTYPE,
-        device: 'wasm',
-      })
-      pipeInstance = gen
+      pipeInstance = await createPipeline(pipeline, device)
+      modelState.device = device
       modelState.status = 'ready'
-      return gen
+      modelState.progress = { loaded: 0, total: 0, text: '' }
+      return pipeInstance
     } catch (e) {
-      modelState.status = 'error'
-      modelState.error = (e && e.message) || String(e)
-      pipePromise = null
+      if (device === 'webgpu') {
+        // WebGPU 不可用则回退 WASM
+        try {
+          pipeInstance = await createPipeline(pipeline, 'wasm')
+          modelState.device = 'wasm'
+          modelState.status = 'ready'
+          modelState.progress = { loaded: 0, total: 0, text: '' }
+          return pipeInstance
+        } catch (e2) {
+          throw e2
+        }
+      }
       throw e
     }
   })()
+
+  pipePromise.catch((e) => {
+    modelState.status = 'error'
+    modelState.error = (e && e.message) || String(e)
+    pipePromise = null
+  })
   return pipePromise
+}
+
+async function createPipeline(pipeline, device) {
+  modelState.device = device
+  modelState.progress = { loaded: 0, total: 0, text: '准备加载…' }
+  return pipeline('text-generation', MODEL_ID, {
+    dtype: DTYPE,
+    device,
+    progress_callback: (p) => {
+      if (!p) return
+      const loaded = p.loaded || 0
+      const total = p.total || 0
+      const name = p.file || ''
+      modelState.progress = {
+        loaded,
+        total,
+        text: name.includes('onnx') ? `加载模型权重 ${Math.round((loaded / total) * 100)}%` : '初始化推理环境…',
+      }
+    },
+  })
+}
+
+export function resetModel() {
+  pipePromise = null
+  pipeInstance = null
+  modelState.status = 'idle'
+  modelState.error = ''
+  modelState.progress = { loaded: 0, total: 0, text: '' }
 }
 
 // 生成回复（支持流式与中止）

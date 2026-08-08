@@ -10,6 +10,9 @@ export function buildMessages(character, history, settings, profile) {
     `请始终以「${character.name}」的身份说话，语言自然口语化，适度推进剧情，不要跳出角色，不要使用"作为AI"之类的表述。`,
     profile && profile.name ? `用户的称呼：${profile.name}` : '',
     profile && profile.likes && profile.likes.length ? `用户喜欢的事物（可自然提起）：${profile.likes.slice(-5).join('、')}` : '',
+    profile && profile.summaries && profile.summaries.length
+      ? `对话记忆（你记得的关于用户的重要信息，可自然提起）：\n${profile.summaries.slice(-5).join('\n')}`
+      : '',
   ]
     .filter(Boolean)
     .join('\n')

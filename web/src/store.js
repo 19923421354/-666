@@ -29,6 +29,7 @@ export const defaultSettings = () => ({
   provider: 'local',
   openai: { baseUrl: '', apiKey: '', model: '' },
   ollama: { baseUrl: 'http://localhost:11434/v1', model: '' },
+  local: { temperature: 0.8, maxTokens: 220 },
   theme: 'dark',
   userName: '我',
   tts: { enabled: true, rate: 1.0, pitch: 1.0 },
@@ -173,6 +174,50 @@ export function upsertCharacter(char) {
   else db.characters.unshift(char)
 }
 
+// 解析角色卡 JSON（支持完整导出包或单角色对象）
+export function parseCharacterImport(text) {
+  const data = JSON.parse(text)
+  const c = data && data.type === 'character' ? data.character : data
+  if (!c || !c.name) throw new Error('不是有效的角色卡')
+  return {
+    id: uid(),
+    name: c.name,
+    tagline: c.tagline || '',
+    style: c.style || 'gentle',
+    styleDesc: c.styleDesc || '',
+    persona: c.persona || '',
+    world: c.world || '',
+    greeting: c.greeting || '',
+    exampleDialogs: Array.isArray(c.exampleDialogs) ? c.exampleDialogs : [],
+    avatar: c.avatar || { type: 'gradient', from: '#a1c4fd', to: '#c2e9fb' },
+    updatedAt: Date.now(),
+  }
+}
+
+// 导出单角色卡
+export function exportCharacterJson(char) {
+  return JSON.stringify({ app: 'xingyu-chat', type: 'character', version: 1, character: char }, null, 2)
+}
+
+// 全局搜索消息：返回 [{ char, conv, msg, charId }]
+export function searchMessages(keyword) {
+  const k = (keyword || '').trim().toLowerCase()
+  if (!k) return []
+  const out = []
+  for (const c of db.characters) {
+    const convs = db.conversations[c.id]
+    if (!convs || !convs.list) continue
+    for (const conv of convs.list) {
+      for (const m of conv.messages) {
+        if (m.content && m.content.toLowerCase().includes(k)) {
+          out.push({ char: c, conv, msg: m, charId: c.id, convId: conv.id })
+        }
+      }
+    }
+  }
+  return out
+}
+
 export function deleteCharacter(charId) {
   db.characters = db.characters.filter((c) => c.id !== charId)
   delete db.conversations[charId]
@@ -217,9 +262,14 @@ export function resetAll() {
 
 export function getProfile(charId) {
   if (!db.profiles[charId]) {
-    db.profiles[charId] = { name: '', likes: [], events: [] }
+    db.profiles[charId] = {}
   }
-  return db.profiles[charId]
+  const base = { name: '', likes: [], events: [], summaries: [] }
+  const p = db.profiles[charId]
+  for (const k of Object.keys(base)) {
+    if (p[k] === undefined) p[k] = base[k]
+  }
+  return p
 }
 
 load()

@@ -1,10 +1,12 @@
 <script setup>
-import { ref, computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { db, charConversations, getActiveConversation, getActiveMessages, addMessage, newConversation, setActiveConversation, deleteConversation, renameConversation, updateMessage, uid, getProfile } from '../store'
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
+import MarkdownText from '../components/MarkdownText.vue'
 import { chatReply } from '../engine/chat'
+import { modelState as localModelState } from '../engine/local'
 import { extractProfile } from '../engine/offline'
 import { speak, stopSpeak, ttsEnabled, ttsSupported } from '../engine/tts'
 
@@ -34,8 +36,36 @@ watch(
   () => route.params.id,
   () => {
     if (char.value) ensureExist()
+    nextTick(locateFromQuery)
   }
 )
+
+watch(() => route.query, () => locateFromQuery())
+
+onMounted(() => {
+  nextTick(locateFromQuery)
+})
+
+function locateFromQuery() {
+  const q = route.query
+  if (char.value && q.conv && convs.value) {
+    const conv = convs.value.list.find((c) => c.id === q.conv)
+    if (conv) setActiveConversation(char.value.id, conv.id)
+  }
+  const hl = q.hl
+  if (hl) {
+    nextTick(() => {
+      const el = listRef.value
+      if (!el) return
+      const target = el.querySelector(`[data-msg-id="${hl}"]`)
+      if (target) {
+        target.scrollIntoView({ block: 'center' })
+        target.classList.add('hl')
+        setTimeout(() => target.classList.remove('hl'), 1800)
+      }
+    })
+  }
+}
 
 function ensureExist() {
   getActiveConversation(char.value)
@@ -109,6 +139,23 @@ function copyText(text) {
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).catch(() => {})
   }
+}
+
+function exportConversation() {
+  const conv = getActiveConversation(char.value)
+  const name = char.value.name
+  const lines = [`星语 AI · ${name} 的对话`, `时间：${new Date().toLocaleString()}`, '']
+  for (const m of conv.messages) {
+    const who = m.role === 'user' ? (db.settings.userName || '我') : name
+    if (m.content) lines.push(`${who}：${m.content}`, '')
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${name}-对话记录-${new Date().toISOString().slice(0, 10)}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function playTts(msg) {
@@ -226,6 +273,13 @@ function formatTime(ts) {
   return `${h}:${m}`
 }
 
+const isLocalLoading = computed(() => db.settings.provider === 'local' && localModelState.status === 'loading')
+const progressPct = computed(() => {
+  const { loaded, total } = localModelState.progress
+  if (!total) return null
+  return Math.min(100, Math.round((loaded / total) * 100))
+})
+
 onBeforeUnmount(() => {
   stopSpeak()
   if (controller) controller.abort()
@@ -252,6 +306,9 @@ onBeforeUnmount(() => {
         <button class="icon-btn" @click="sheetOpen = true" aria-label="对话列表">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
         </button>
+        <button class="icon-btn" @click="exportConversation" aria-label="导出对话">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+        </button>
         <button class="icon-btn" @click="router.push(`/character/${char.id}/edit`)" aria-label="编辑角色">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
         </button>
@@ -259,14 +316,20 @@ onBeforeUnmount(() => {
     </header>
 
     <div class="msg-list" ref="listRef">
+      <div v-if="isLocalLoading" class="model-loading">
+        <div class="bar"><div class="fill" :class="{ unknown: progressPct === null }" :style="progressPct !== null ? { width: progressPct + '%' } : {}"></div></div>
+        <span class="lbl">{{ localModelState.progress.text || '正在唤醒内置 AI 模型…' }}</span>
+        <span v-if="localModelState.device" class="lbl dev">加速：{{ localModelState.device === 'webgpu' ? 'WebGPU' : 'CPU' }}</span>
+      </div>
       <div class="day-sep" v-if="messages.length">
         <span>{{ char.greeting ? '来自 ' + char.name + ' 的问候' : '对话开始' }}</span>
       </div>
-      <div v-for="(m, idx) in messages" :key="m.id" :class="['msg', m.role === 'user' ? 'me' : 'bot']">
+      <div v-for="(m, idx) in messages" :key="m.id" :data-msg-id="m.id" :class="['msg', m.role === 'user' ? 'me' : 'bot']">
         <Avatar v-if="m.role === 'assistant'" :avatar="char.avatar" :name="char.name" :size="34" />
         <div class="bubble-wrap">
           <div :class="['bubble', { error: m.error }]">
             <span v-if="m.thinking && !m.content" class="thinking"><i></i><i></i><i></i></span>
+            <MarkdownText v-else-if="m.role === 'assistant' && m.content" :text="m.content" />
             <template v-else>{{ m.content }}</template>
           </div>
           <div v-if="!m.thinking && m.content" class="msg-actions">
@@ -356,6 +419,13 @@ export default {
   max-width: 640px;
   margin: 0 auto;
 }
+@media (min-width: 760px) {
+  .chat-page {
+    max-width: 760px;
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+  }
+}
 .chat-top {
   display: flex;
   align-items: center;
@@ -402,6 +472,42 @@ export default {
   flex-direction: column;
   gap: 14px;
 }
+.model-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+.model-loading .bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--card-2);
+  overflow: hidden;
+}
+.model-loading .fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--grad);
+  transition: width 0.3s;
+}
+.model-loading .fill.unknown {
+  width: 35%;
+  animation: slide 1.4s ease-in-out infinite;
+}
+@keyframes slide {
+  0% { margin-left: -35%; }
+  100% { margin-left: 100%; }
+}
+.model-loading .lbl {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.model-loading .lbl.dev {
+  color: var(--accent-a);
+}
 .day-sep {
   text-align: center;
   font-size: 12px;
@@ -438,6 +544,13 @@ export default {
   color: #fff;
   border: none;
   border-bottom-right-radius: 4px;
+}
+.msg.hl .bubble {
+  animation: hl 1.6s ease;
+}
+@keyframes hl {
+  0%, 60% { box-shadow: 0 0 0 3px var(--accent-a); background: rgba(124, 108, 255, 0.14); }
+  100% { box-shadow: none; }
 }
 .msg.bot .bubble {
   border-bottom-left-radius: 4px;
