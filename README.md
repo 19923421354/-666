@@ -25,7 +25,7 @@
 
 ### 手机安装（Android APK）
 
-1. 一键构建脚本会产出安装包到 `dist/星语AI-v1.0.0.apk`：
+1. 一键构建脚本会产出安装包到 `dist/星语AI-v1.1.0.apk`：
 
    ```bash
    bash scripts/build-apk.sh
