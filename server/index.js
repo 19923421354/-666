@@ -25,11 +25,23 @@ function loadConfig() {
     baseUrl: process.env.XY_BASE_URL || cfg.baseUrl || '',
     apiKey: process.env.XY_API_KEY || cfg.apiKey || '',
     model: process.env.XY_MODEL || cfg.model || '',
+    update: cfg.update || {},
   }
 }
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, app: 'xingyu-chat', time: Date.now() })
+})
+
+// 应用内更新信息（前端「检查更新」优先读取；可编辑 config.json 配置）
+app.get('/api/update.json', (req, res) => {
+  const cfg = loadConfig()
+  const update = cfg.update || {}
+  res.json({
+    version: update.version || '1.2.0',
+    notes: update.notes || '星语 AI 更新信息，请查看 GitHub Releases',
+    apkUrl: update.apkUrl || '',
+  })
 })
 
 // 接口代理：把前端请求转发到 OpenAI 兼容服务（SSE 流式）

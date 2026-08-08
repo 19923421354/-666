@@ -25,7 +25,9 @@ export function buildMessages(character, history, settings, profile) {
     }
   }
 
-  const recent = history.slice(-24)
+  // 上下文窗口：settings.contextWindow 条消息，0 表示不截断
+  const window = Number(settings && settings.contextWindow) || 0
+  const recent = window > 0 ? history.slice(-window) : history.slice(-48)
   for (const m of recent) {
     if (m.role === 'system') continue
     messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content })

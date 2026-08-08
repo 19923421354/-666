@@ -1,11 +1,11 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { db, charConversations, getActiveConversation, getActiveMessages, addMessage, newConversation, setActiveConversation, deleteConversation, renameConversation, updateMessage, uid, getProfile } from '../store'
+import { db, charConversations, getActiveConversation, getActiveMessages, addMessage, newConversation, setActiveConversation, deleteConversation, renameConversation, updateMessage, uid, getProfile, removeSummary, clearSummaries } from '../store'
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
 import MarkdownText from '../components/MarkdownText.vue'
-import { chatReply } from '../engine/chat'
+import { chatReply, summarizeConversation } from '../engine/chat'
 import { modelState as localModelState } from '../engine/local'
 import { extractProfile } from '../engine/offline'
 import { speak, stopSpeak, ttsEnabled, ttsSupported } from '../engine/tts'
@@ -28,6 +28,10 @@ const renameText = ref('')
 const confirmOpen = ref(false)
 const confirmAction = ref(null)
 const listRef = ref(null)
+const summarizing = ref(false)
+const memOpen = ref(false)
+const toastMsg = ref('')
+let toastTimer = null
 
 let controller = null
 let currentMsgId = null
@@ -156,6 +160,42 @@ function exportConversation() {
   a.download = `${name}-对话记录-${new Date().toISOString().slice(0, 10)}.txt`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function showToast(msg) {
+  toastMsg.value = msg
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => (toastMsg.value = ''), 4000)
+}
+
+async function doSummarize() {
+  if (summarizing.value || !char.value) return
+  const hasUser = messages.value.some((m) => m.role === 'user')
+  if (!hasUser) {
+    showToast('还没有可以总结的对话内容')
+    return
+  }
+  summarizing.value = true
+  try {
+    const s = await summarizeConversation(char.value, messages.value, profile.value, db.settings, {
+      manual: true,
+    })
+    if (s) showToast('已生成记忆 ✓')
+    else showToast('暂无可总结的内容')
+  } catch (e) {
+    showToast('总结失败：' + ((e && e.message) || '请稍后重试'))
+  } finally {
+    summarizing.value = false
+  }
+}
+
+function delMemory(idx) {
+  removeSummary(char.value.id, idx)
+}
+
+function clearMemories() {
+  clearSummaries(char.value.id)
+  showToast('已清空记忆')
 }
 
 function playTts(msg) {
@@ -300,6 +340,9 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="actions">
+        <button class="icon-btn" @click="memOpen = true" aria-label="记忆">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v3H9zM9 3v1a4 4 0 0 0 4 4 4 4 0 0 0 4-4V3M9 12h.01M15 12h.01M9 17h.01M15 17h.01M5 7a2 2 0 0 1 2 2v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 1 2-2"></path></svg>
+        </button>
         <button class="icon-btn" @click="openNewConversation" aria-label="新对话">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
         </button>
@@ -342,6 +385,10 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div v-if="messages.length === 0" class="empty-tip">发送一句话，开启你们的对话吧</div>
+      <button v-if="messages.length >= 2" class="summarize-btn" :disabled="summarizing" @click="doSummarize">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-9 9 9M5 10v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V10M9 21v-6h6v6"></path></svg>
+        {{ summarizing ? '正在总结…' : '智能总结这段对话' }}
+      </button>
     </div>
 
     <div class="input-bar">
@@ -396,6 +443,22 @@ onBeforeUnmount(() => {
         <button class="btn btn-danger" @click="doConfirm">确认</button>
       </div>
     </Sheet>
+
+    <Sheet :show="memOpen" title="与 {{ char.name }} 的长期记忆" @close="memOpen = false">
+      <div class="mem-tip">每隔 8 轮对话会自动总结，或点击「智能总结」手动沉淀。记忆会让 {{ char.name }} 更懂你。</div>
+      <div v-if="!profile.summaries || profile.summaries.length === 0" class="empty-tip">还没有记忆，多聊聊吧</div>
+      <div v-for="(s, idx) in profile.summaries" :key="idx" class="mem-item">
+        <span>{{ s }}</span>
+        <button class="icon-btn tiny danger" @click="delMemory(idx)" aria-label="删除">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <button v-if="profile.summaries && profile.summaries.length" class="btn btn-ghost" style="margin-top: 12px" @click="clearMemories">清空全部记忆</button>
+    </Sheet>
+
+    <transition name="fade">
+      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
+    </transition>
   </div>
 </template>
 
@@ -698,5 +761,54 @@ export default {
   text-align: center;
   font-size: 16px;
   padding: 8px 0 2px;
+}
+.summarize-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px auto 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--accent-a);
+  background: rgba(124, 108, 255, 0.08);
+  border: 1px solid rgba(124, 108, 255, 0.35);
+  border-radius: 999px;
+}
+.summarize-btn:disabled {
+  opacity: 0.6;
+}
+.mem-tip {
+  font-size: 12px;
+  color: var(--text-faint);
+  line-height: 1.6;
+  padding: 4px 2px 10px;
+}
+.mem-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.mem-item .icon-btn {
+  flex-shrink: 0;
+}
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 90px;
+  transform: translateX(-50%);
+  max-width: 84vw;
+  padding: 10px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #fff;
+  background: rgba(20, 20, 28, 0.92);
+  border-radius: 10px;
+  z-index: 200;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 </style>

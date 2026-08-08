@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { db, exportAll, importAll, resetAll } from '../store'
 import { STYLES } from '../engine/offline'
+import { APP_VERSION, checkUpdate, downloadAndInstall } from '../engine/update'
 
 const router = useRouter()
 const importOpen = ref(false)
@@ -11,12 +12,53 @@ const resetOpen = ref(false)
 const importMsg = ref('')
 const fileInput = ref(null)
 
+const checkState = ref('idle') // idle | checking | latest | update | error
+const updateOpen = ref(false)
+const updateInfo = ref(null)
+const updateMsg = ref('')
+
 const providers = [
   { id: 'local', name: '星语内置 AI（真·本地推理）', desc: '内置 Qwen2.5-0.5B 模型，离线运行，免费无需网络' },
   { id: 'offline', name: '轻量对话（离线兜底）', desc: '无需任何接口与网络，使用内置角色扮演引擎，响应快' },
   { id: 'ollama', name: 'Ollama 本地模型', desc: '连接你自己电脑上运行的 Ollama，完全本地、免费' },
   { id: 'openai', name: 'OpenAI 兼容接口', desc: '支持 DeepSeek / 通义 / GLM / OpenAI 等任意兼容服务' },
 ]
+
+async function doCheck() {
+  checkState.value = 'checking'
+  updateMsg.value = ''
+  updateOpen.value = true
+  updateInfo.value = null
+  try {
+    const info = await checkUpdate()
+    if (!info) {
+      checkState.value = 'error'
+      updateMsg.value = '无法连接更新服务器，请检查网络后重试'
+      return
+    }
+    updateInfo.value = info
+    checkState.value = info.hasUpdate ? 'update' : 'latest'
+  } catch (e) {
+    checkState.value = 'error'
+    updateMsg.value = '检查更新失败：' + (e && e.message)
+  }
+}
+
+async function doInstall() {
+  if (!updateInfo.value || !updateInfo.value.apkUrl) {
+    updateMsg.value = '暂未提供下载地址，请稍后再试'
+    return
+  }
+  try {
+    const r = await downloadAndInstall(updateInfo.value.apkUrl)
+    updateMsg.value =
+      r && r.web
+        ? '已开始下载，请留意浏览器下载提示'
+        : '已开始下载安装包，完成后系统将引导你完成安装'
+  } catch (e) {
+    updateMsg.value = '下载失败：' + (e && e.message)
+  }
+}
 
 function doExport() {
   const blob = new Blob([exportAll()], { type: 'application/json' })
@@ -105,9 +147,31 @@ function doReset() {
       <input class="slider" type="range" min="0.1" max="1.5" step="0.1" v-model.number="db.settings.local.temperature" />
       <div class="row">
         <span>最大回复长度</span>
-        <input class="inline-input" type="number" min="40" max="600" step="20" v-model.number="db.settings.local.maxTokens" />
+        <div class="inline-row">
+          <input class="inline-input" type="number" min="40" step="20" v-model.number="db.settings.local.maxTokens" />
+          <button class="mini-btn" :class="{ on: db.settings.local.maxTokens === 0 }" @click="db.settings.local.maxTokens = db.settings.local.maxTokens === 0 ? 220 : 0">无上限</button>
+        </div>
       </div>
-      <div class="hint">温度越高回复越有想象力，越低越稳定。适用于内置 AI 与接口引擎。</div>
+      <div class="row">
+        <span>上下文消息条数</span>
+        <select class="mini-select" v-model.number="db.settings.contextWindow">
+          <option :value="10">最近 10 条</option>
+          <option :value="24">最近 24 条</option>
+          <option :value="50">最近 50 条</option>
+          <option :value="0">全部</option>
+        </select>
+      </div>
+      <template v-if="db.settings.provider === 'local'">
+        <div class="row">
+          <span>上下文 Token 上限</span>
+          <select class="mini-select" v-model.number="db.settings.local.contextLimit">
+            <option :value="2048">2048（省内存）</option>
+            <option :value="4096">4096（推荐）</option>
+            <option :value="8192">8192（完整）</option>
+          </select>
+        </div>
+      </template>
+      <div class="hint">「无上限」时模型也会在合理范围内自动停止。上下文条数越多越懂你，但生成会变慢并占用更多内存。</div>
     </div>
 
     <div class="group">
@@ -144,10 +208,17 @@ function doReset() {
     <div class="group">
       <div class="group-title">关于</div>
       <div class="about">
-        <p><b>星语 AI</b> v1.1.0</p>
+        <p><b>星语 AI</b> v{{ APP_VERSION }}</p>
         <p>开源免费的 AI 角色扮演聊天应用。数据全部保存在本机，不收集任何个人信息。</p>
         <p>内容仅供娱乐，AI 回复由程序生成，不构成任何建议。</p>
       </div>
+      <button class="row-btn" @click="doCheck">
+        <span>{{ checkState === 'checking' ? '正在检查更新…' : '检查更新' }}</span>
+        <span class="arrow">{{ checkState === 'checking' ? '…' : '›' }}</span>
+      </button>
+      <button class="row-btn" @click="router.push('/donate')">
+        <span>赞赏支持开发者</span><span class="arrow">›</span>
+      </button>
     </div>
 
     <div class="bottom-space"></div>
@@ -161,6 +232,29 @@ function doReset() {
       <div class="sheet-actions">
         <button class="btn btn-ghost" @click="resetOpen = false">取消</button>
         <button class="btn btn-danger" @click="doReset">确认清空</button>
+      </div>
+    </div>
+
+    <div class="sheet-mask" v-if="updateOpen" @click="updateOpen = false"></div>
+    <div class="sheet mini" v-if="updateOpen">
+      <div class="sheet-handle"></div>
+      <div class="update-body">
+        <template v-if="checkState === 'update' && updateInfo">
+          <div class="update-title">发现新版本 v{{ updateInfo.latest }}</div>
+          <div class="update-notes" v-if="updateInfo.notes">{{ updateInfo.notes }}</div>
+          <button class="btn" :disabled="updateMsg && updateMsg.startsWith('已开始')" @click="doInstall">立即下载更新</button>
+        </template>
+        <template v-else-if="checkState === 'latest'">
+          <div class="update-title">已是最新版本 v{{ APP_VERSION }}</div>
+        </template>
+        <template v-else-if="checkState === 'checking'">
+          <div class="update-title">正在检查更新…</div>
+        </template>
+        <template v-else>
+          <div class="update-title">{{ updateMsg || '检查更新失败' }}</div>
+        </template>
+        <div v-if="updateMsg" class="update-msg">{{ updateMsg }}</div>
+        <button class="btn btn-ghost" @click="updateOpen = false">关闭</button>
       </div>
     </div>
   </div>
@@ -333,5 +427,65 @@ function doReset() {
 }
 .sheet.mini {
   max-width: 420px;
+}
+.inline-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mini-btn {
+  padding: 7px 12px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card-2);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.mini-btn.on {
+  border-color: var(--accent-a);
+  background: rgba(124, 108, 255, 0.12);
+  color: var(--accent-a);
+  font-weight: 700;
+}
+.mini-select {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card-2);
+  color: var(--text);
+  font-size: 13px;
+  max-width: 180px;
+}
+.update-body {
+  padding: 6px 4px 2px;
+}
+.update-title {
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+.update-notes {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 12px 0;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+.update-msg {
+  font-size: 13px;
+  color: var(--ok);
+  text-align: center;
+  margin: 10px 0 4px;
+}
+.update-body .btn {
+  width: 100%;
+  margin-top: 10px;
 }
 </style>

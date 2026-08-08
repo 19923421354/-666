@@ -29,7 +29,8 @@ export const defaultSettings = () => ({
   provider: 'local',
   openai: { baseUrl: '', apiKey: '', model: '' },
   ollama: { baseUrl: 'http://localhost:11434/v1', model: '' },
-  local: { temperature: 0.8, maxTokens: 220 },
+  local: { temperature: 0.8, maxTokens: 220, contextLimit: 4096 },
+  contextWindow: 24,
   theme: 'dark',
   userName: '我',
   tts: { enabled: true, rate: 1.0, pitch: 1.0 },
@@ -270,6 +271,18 @@ export function getProfile(charId) {
     if (p[k] === undefined) p[k] = base[k]
   }
   return p
+}
+
+export function removeSummary(charId, idx) {
+  const p = db.profiles[charId]
+  if (p && Array.isArray(p.summaries) && p.summaries[idx] !== undefined) {
+    p.summaries.splice(idx, 1)
+  }
+}
+
+export function clearSummaries(charId) {
+  const p = db.profiles[charId]
+  if (p) p.summaries = []
 }
 
 load()

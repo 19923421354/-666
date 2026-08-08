@@ -113,6 +113,27 @@ export async function generate(messages, opts = {}) {
   const gen = await loadModel()
   const { TextStreamer } = window.__XY_TFM_MODULE__
 
+  // 0 表示无上限，使用一个宽松值，模型遇到结束符会自行停止
+  const maxNew = maxTokens > 0 ? maxTokens : 2048
+
+  // 上下文 Token 预算：按字符粗略估算，超限时从最早的消息开始裁剪（保留 system 与最近消息）
+  const budget = (Number(opts.contextLimit) || 4096) * 2
+  let input = messages
+  if (budget > 0) {
+    let total = 0
+    const kept = []
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const cost = (messages[i].content || '').length
+      if (kept.length > 0 && total + cost > budget) continue
+      total += cost
+      kept.unshift(messages[i])
+    }
+    if (messages[0] && messages[0].role === 'system' && kept[0] !== messages[0]) {
+      kept.unshift(messages[0])
+    }
+    input = kept
+  }
+
   let aborted = false
   const abortHandler = () => {
     aborted = true
@@ -132,8 +153,8 @@ export async function generate(messages, opts = {}) {
       },
     })
 
-    const output = await gen(messages, {
-      max_new_tokens: maxTokens,
+    const output = await gen(input, {
+      max_new_tokens: maxNew,
       do_sample: true,
       temperature,
       top_p: 0.95,
