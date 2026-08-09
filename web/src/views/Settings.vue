@@ -24,6 +24,12 @@ const providers = [
   { id: 'openai', name: 'OpenAI 兼容接口', desc: '支持 DeepSeek / 通义 / GLM / OpenAI 等任意兼容服务' },
 ]
 
+const themeOpts = [
+  { id: 'system', label: '跟随系统' },
+  { id: 'dark', label: '深色' },
+  { id: 'light', label: '浅色' },
+]
+
 async function doCheck() {
   checkState.value = 'checking'
   updateMsg.value = ''
@@ -177,8 +183,10 @@ function doReset() {
     <div class="group">
       <div class="group-title">外观与体验</div>
       <div class="row">
-        <span>深色模式</span>
-        <button class="switch" :class="{ on: db.settings.theme === 'dark' }" @click="db.settings.theme = db.settings.theme === 'dark' ? 'light' : 'dark'"><i></i></button>
+        <span>外观主题</span>
+        <div class="seg">
+          <button v-for="t in themeOpts" :key="t.id" :class="{ on: db.settings.theme === t.id }" @click="db.settings.theme = t.id">{{ t.label }}</button>
+        </div>
       </div>
       <div class="row">
         <span>语音朗读</span>
@@ -456,6 +464,25 @@ function doReset() {
   color: var(--text);
   font-size: 13px;
   max-width: 180px;
+}
+.seg {
+  display: flex;
+  gap: 4px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 3px;
+}
+.seg button {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 7px;
+  color: var(--text-dim);
+}
+.seg button.on {
+  background: var(--grad);
+  color: #fff;
+  font-weight: 700;
 }
 .update-body {
   padding: 6px 4px 2px;

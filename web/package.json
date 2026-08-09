@@ -1,11 +1,11 @@
 {
   "name": "xingyu-web",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node ../scripts/trim-wasm.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

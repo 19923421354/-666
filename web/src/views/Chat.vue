@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { db, charConversations, getActiveConversation, getActiveMessages, addMessage, newConversation, setActiveConversation, deleteConversation, renameConversation, updateMessage, uid, getProfile, removeSummary, clearSummaries } from '../store'
+import { db, charConversations, getActiveConversation, getActiveMessages, addMessage, newConversation, setActiveConversation, deleteConversation, renameConversation, updateMessage, uid, getProfile, removeSummary, clearSummaries, toggleConversationFav } from '../store'
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
 import MarkdownText from '../components/MarkdownText.vue'
@@ -418,6 +418,9 @@ onBeforeUnmount(() => {
             <div class="conv-title">{{ conv.title }}</div>
             <div class="conv-meta">{{ conv.messages.length }} 条消息</div>
           </div>
+          <button :class="['icon-btn', 'tiny', { star: conv.fav }]" @click.stop="toggleConversationFav(char.id, conv.id)" aria-label="收藏">
+            <svg width="16" height="16" viewBox="0 0 24 24" :fill="conv.fav ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+          </button>
           <button class="icon-btn tiny" @click.stop="openRename(conv)" aria-label="重命名">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
           </button>
@@ -748,6 +751,9 @@ export default {
 .icon-btn.tiny {
   width: 30px;
   height: 30px;
+}
+.icon-btn.star {
+  color: #f5b944;
 }
 .sheet-actions {
   display: flex;

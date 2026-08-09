@@ -31,7 +31,7 @@ export const defaultSettings = () => ({
   ollama: { baseUrl: 'http://localhost:11434/v1', model: '' },
   local: { temperature: 0.8, maxTokens: 220, contextLimit: 4096 },
   contextWindow: 24,
-  theme: 'dark',
+  theme: 'system',
   userName: '我',
   tts: { enabled: true, rate: 1.0, pitch: 1.0 },
 })
@@ -87,6 +87,7 @@ export function ensureConversation(char) {
       title: '新的对话',
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      fav: false,
       messages: [
         { id: uid(), role: 'assistant', content: char.greeting || '你好呀', ts: Date.now() },
       ],
@@ -121,7 +122,7 @@ export function addMessage(charId, msg) {
     }
   }
   if (convs.list.length > 1) {
-    convs.list.sort((a, b) => b.updatedAt - a.updatedAt)
+    convs.list.sort((a, b) => Number(b.fav) - Number(a.fav) || b.updatedAt - a.updatedAt)
   }
 }
 
@@ -132,6 +133,7 @@ export function newConversation(char) {
     title: '新的对话',
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    fav: false,
     messages: [
       { id: uid(), role: 'assistant', content: char.greeting || '你好呀', ts: Date.now() },
     ],
@@ -139,6 +141,12 @@ export function newConversation(char) {
   convs.list.unshift(conv)
   convs.activeId = conv.id
   return conv
+}
+
+export function toggleConversationFav(charId, convId) {
+  const convs = charConversations(charId)
+  const conv = convs.list.find((c) => c.id === convId)
+  if (conv) conv.fav = !conv.fav
 }
 
 export function setActiveConversation(charId, convId) {

@@ -1,7 +1,7 @@
 // 应用内更新检测：优先同源自托管更新信息，其次查询 GitHub Releases
 // 版本升级后请同步更新 APP_VERSION（与 package.json / android build.gradle 保持一致）
 
-export const APP_VERSION = '1.2.0'
+export const APP_VERSION = '1.3.0'
 export const GITHUB_REPO = '19923421354/xingyu'
 
 export function compareVersion(a, b) {
