@@ -1,7 +1,7 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { db, searchMessages, parseCharacterImport, upsertCharacter, toggleCharacterFav, recentConversations } from '../store'
+import { db, searchMessages, parseCharacterImport, upsertCharacter, toggleCharacterFav, recentConversations, characterTags } from '../store'
 import CharacterCard from '../components/CharacterCard.vue'
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
@@ -10,6 +10,7 @@ import Icon from '../components/Icon.vue'
 const router = useRouter()
 const keyword = ref('')
 const tab = ref('all')
+const tagFilter = ref('')
 
 const searchOpen = ref(false)
 const searchKw = ref('')
@@ -18,6 +19,8 @@ const results = computed(() => searchMessages(searchKw.value))
 
 const recents = computed(() => recentConversations(5))
 
+const tags = computed(() => characterTags())
+
 const list = computed(() => {
   let arr = [...db.characters]
   if (tab.value === 'mine') {
@@ -25,6 +28,9 @@ const list = computed(() => {
   }
   if (tab.value === 'fav') {
     arr = arr.filter((c) => c.fav)
+  }
+  if (tagFilter.value) {
+    arr = arr.filter((c) => (c.tags || []).includes(tagFilter.value))
   }
   if (keyword.value.trim()) {
     const k = keyword.value.trim().toLowerCase()
@@ -46,6 +52,14 @@ function goSearchResult(r) {
 
 function openImport() {
   importFile.value && importFile.value.click()
+}
+
+function openRandom() {
+  const mine = db.characters.filter((c) => c.id.startsWith('preset-'))
+  const pool = mine.length ? mine : db.characters
+  if (!pool.length) return
+  const c = pool[Math.floor(Math.random() * pool.length)]
+  router.push({ path: `/chat/${c.id}` })
 }
 
 function onImportFile(e) {
@@ -72,6 +86,20 @@ function snippet(text) {
   const start = Math.max(0, idx - 10)
   return (start > 0 ? '…' : '') + t.slice(start, idx + k.length + 24) + (start + k.length + 24 < t.length ? '…' : '')
 }
+
+// 全局快捷键：/ 或 Ctrl+K 打开搜索
+function onGlobalKey(e) {
+  if ((e.key === '/' || (e.key === 'k' && (e.ctrlKey || e.metaKey))) && !e.target.closest('input, textarea, select')) {
+    e.preventDefault()
+    searchOpen.value = true
+  }
+}
+onMounted(() => {
+  window.addEventListener('keydown', onGlobalKey)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onGlobalKey)
+})
 
 // 今日运势：按日期种子生成，每天固定
 const today = new Date()
@@ -106,6 +134,9 @@ const lastMsgOf = (conv) => {
       <div class="head-actions">
         <button class="icon-btn" @click="searchOpen = true" aria-label="搜索消息">
           <Icon name="search" :size="20" />
+        </button>
+        <button class="icon-btn" @click="router.push('/stats')" aria-label="聊天统计">
+          <Icon name="flame" :size="20" />
         </button>
         <button class="icon-btn" @click="openImport" aria-label="导入角色">
           <Icon name="upload" :size="20" />
@@ -153,6 +184,14 @@ const lastMsgOf = (conv) => {
       <button class="chip new-btn" @click="router.push('/character/new')">
         <Icon name="plus" :size="14" /> 新建
       </button>
+      <button class="chip lucky-btn" @click="openRandom">
+        <Icon name="gift" :size="14" /> 抽一个
+      </button>
+    </div>
+
+    <div v-if="tags.length" class="tag-row">
+      <button :class="['chip', 'tag-chip', { active: !tagFilter }]" @click="tagFilter = ''">全部</button>
+      <button v-for="t in tags" :key="t" :class="['chip', 'tag-chip', { active: tagFilter === t }]" @click="tagFilter = tagFilter === t ? '' : t">{{ t }}</button>
     </div>
 
     <div v-if="list.length" class="grid">
@@ -360,8 +399,23 @@ h1 {
 .tabs {
   display: flex;
   gap: 8px;
-  padding: 14px 18px 12px;
+  padding: 14px 18px 10px;
   align-items: center;
+}
+.tag-row {
+  display: flex;
+  gap: 8px;
+  padding: 0 18px 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tag-row::-webkit-scrollbar {
+  display: none;
+}
+.tag-chip {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  font-size: 12px;
 }
 .new-btn {
   margin-left: auto;
@@ -371,6 +425,14 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+.lucky-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-a);
+  border-color: rgba(124, 108, 255, 0.4);
+  background: rgba(124, 108, 255, 0.08);
 }
 .grid {
   display: flex;

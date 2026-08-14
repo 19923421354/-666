@@ -12,6 +12,7 @@ const router = createRouter({
     { path: '/character/new', component: () => import('./views/CharacterEdit.vue') },
     { path: '/character/:id/edit', component: () => import('./views/CharacterEdit.vue') },
     { path: '/settings', component: () => import('./views/Settings.vue') },
+    { path: '/stats', component: () => import('./views/Stats.vue') },
     { path: '/donate', component: () => import('./views/Donate.vue') },
   ],
 })

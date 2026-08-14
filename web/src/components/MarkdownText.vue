@@ -70,6 +70,7 @@ const html = computed(() => {
   let i = 0
   let inCode = false
   let codeBuf = []
+  let codeLang = ''
   let listOpen = false
   let quoteOpen = false
   let pOpen = false
@@ -107,9 +108,12 @@ const html = computed(() => {
       if (!inCode) {
         inCode = true
         codeBuf = []
+        codeLang = trimmed.slice(3).trim()
       } else {
         inCode = false
-        out.push(`<pre><code>${escapeHtml(codeBuf.join('\n'))}</code></pre>`)
+        const uid = 'cb' + Math.random().toString(36).slice(2, 8)
+        out.push(`<pre><code>${escapeHtml(codeBuf.join('\n'))}</code></pre><button class="copy-code" data-uid="${uid}" data-code="${btoa(unescape(encodeURIComponent(codeBuf.join('\n'))))}">复制</button>`)
+        codeLang = ''
       }
       i++
       continue
@@ -192,11 +196,30 @@ const html = computed(() => {
 })
 
 const needsFold = computed(() => props.fold && props.text.length > props.foldAt)
+
+function onMdxClick(e) {
+  const btn = e.target && e.target.closest
+    ? e.target.closest('.copy-code')
+    : null
+  if (!btn) return
+  const code = btn.getAttribute('data-code') || ''
+  if (!code) return
+  let text = ''
+  try {
+    text = decodeURIComponent(escape(atob(code)))
+  } catch (err) {
+    text = code
+  }
+  if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {})
+  const old = btn.textContent
+  btn.textContent = '已复制 ✓'
+  setTimeout(() => (btn.textContent = old), 1200)
+}
 </script>
 
 <template>
   <div class="mdx">
-    <div class="md" v-html="html"></div>
+    <div class="md" v-html="html" @click="onMdxClick"></div>
     <button v-if="needsFold" class="fold-btn" @click="folded = !folded">
       {{ folded ? '展开全文 ▾' : '收起全文 ▴' }}
     </button>
@@ -227,9 +250,19 @@ const needsFold = computed(() => props.fold && props.text.length > props.foldAt)
   border-radius: 10px;
   padding: 10px 12px;
   overflow-x: auto;
-  margin: 8px 0;
+  margin: 8px 0 0;
   font-size: 13px;
   line-height: 1.5;
+}
+.md :deep(.copy-code) {
+  display: inline-block;
+  margin: 4px 0 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  border-radius: 6px;
+  padding: 2px 10px;
 }
 .md :deep(pre code) {
   background: transparent;

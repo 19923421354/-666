@@ -32,9 +32,30 @@ export const defaultSettings = () => ({
   local: { temperature: 0.8, maxTokens: 220, contextLimit: 4096 },
   contextWindow: 24,
   theme: 'system',
+  accent: 'default',
+  fontSize: 1,
+  bubbleStyle: 'rounded',
   userName: '我',
   tts: { enabled: true, rate: 1.0, pitch: 1.0 },
+  quickPhrases: [],
 })
+
+export const ACCENTS = {
+  default: { a: '#7c6cff', b: '#ff5fa2', name: '星语紫粉' },
+  ocean: { a: '#2193b0', b: '#6dd5ed', name: '海风青蓝' },
+  sunset: { a: '#f5576c', b: '#f093fb', name: '落日玫紫' },
+  forest: { a: '#56ab2f', b: '#a8e063', name: '森林青绿' },
+  amber: { a: '#f2994a', b: '#f2c94c', name: '暖阳琥珀' },
+  mono: { a: '#6b7280', b: '#9ca3af', name: '石墨灰' },
+  cherry: { a: '#eb3349', b: '#f45c43', name: '樱桃红' },
+  grape: { a: '#834d9b', b: '#d04ed6', name: '葡萄紫' },
+}
+
+export const BUBBLE_STYLES = [
+  { id: 'rounded', name: '圆润' },
+  { id: 'soft', name: '柔和' },
+  { id: 'sharp', name: '利落' },
+]
 
 export const db = reactive({
   settings: defaultSettings(),
@@ -42,10 +63,12 @@ export const db = reactive({
   conversations: {},
   profiles: {},
   drafts: {},
+  stats: { activeDays: [], sent: 0, chars: 0 },
 })
 
 function load() {
   db.settings = { ...defaultSettings(), ...storageGet('settings', {}) }
+  db.settings.tts = { enabled: true, rate: 1.0, pitch: 1.0, ...(db.settings.tts || {}) }
   db.characters = storageGet('characters', null)
   if (!Array.isArray(db.characters) || db.characters.length === 0) {
     db.characters = []
@@ -53,6 +76,7 @@ function load() {
   db.conversations = storageGet('conversations', {})
   db.profiles = storageGet('profiles', {})
   db.drafts = storageGet('drafts', {})
+  db.stats = { activeDays: [], sent: 0, chars: 0, ...storageGet('stats', {}) }
 }
 
 let saveTimer = null
@@ -64,6 +88,7 @@ function scheduleSave() {
     storageSet('conversations', db.conversations)
     storageSet('profiles', db.profiles)
     storageSet('drafts', db.drafts)
+    storageSet('stats', db.stats)
   }, 120)
 }
 
@@ -150,6 +175,12 @@ export function toggleConversationFav(charId, convId) {
   const convs = charConversations(charId)
   const conv = convs.list.find((c) => c.id === convId)
   if (conv) conv.fav = !conv.fav
+}
+
+export function toggleConversationPin(charId, convId) {
+  const convs = charConversations(charId)
+  const conv = convs.list.find((c) => c.id === convId)
+  if (conv) conv.pinned = !conv.pinned
 }
 
 export function setActiveConversation(charId, convId) {
@@ -240,6 +271,84 @@ export function toggleCharacterFav(charId) {
   if (c) c.fav = !c.fav
 }
 
+// —— 使用统计（活跃天数、消息数、连续打卡） ——
+function dateKey(d) {
+  const t = d || new Date()
+  return `${t.getFullYear()}-${t.getMonth() + 1}-${t.getDate()}`
+}
+
+export function recordActivity(msgCount, charCount) {
+  const k = dateKey()
+  const arr = db.stats.activeDays || (db.stats.activeDays = [])
+  if (!arr.includes(k)) arr.push(k)
+  db.stats.sent = (db.stats.sent || 0) + msgCount
+  db.stats.chars = (db.stats.chars || 0) + charCount
+}
+
+export function todayMessages() {
+  const k = dateKey()
+  let n = 0
+  for (const c of db.characters) {
+    const convs = db.conversations[c.id]
+    if (!convs || !convs.list) continue
+    for (const conv of convs.list) {
+      if (!conv.messages) continue
+      for (const m of conv.messages) {
+        if (m.ts && dateKey(new Date(m.ts)) === k) n++
+      }
+    }
+  }
+  return n
+}
+
+export function currentStreak() {
+  const arr = (db.stats.activeDays || []).slice().sort()
+  const set = new Set(arr)
+  let streak = 0
+  const d = new Date()
+  for (let i = 0; i < 366; i++) {
+    const k = dateKey(d)
+    if (set.has(k)) {
+      streak++
+      d.setDate(d.getDate() - 1)
+    } else if (i === 0) {
+      // 今天还没记录则从昨天开始算
+      d.setDate(d.getDate() - 1)
+    } else {
+      break
+    }
+  }
+  return streak
+}
+
+export function totalStats() {
+  let convs = 0
+  let msgs = 0
+  let chars = 0
+  for (const c of db.characters) {
+    const list = db.conversations[c.id]
+    if (!list || !list.list) continue
+    convs += list.list.length
+    for (const conv of list.list) {
+      if (!conv.messages) continue
+      msgs += conv.messages.length
+      for (const m of conv.messages) {
+        if (m.content) chars += m.content.length
+      }
+    }
+  }
+  return { characters: db.characters.length, convs, msgs, chars }
+}
+
+// 角色标签
+export function characterTags() {
+  const set = new Set()
+  for (const c of db.characters) {
+    for (const t of c.tags || []) set.add(t)
+  }
+  return [...set].sort()
+}
+
 // 最近聊过的会话（跨角色，按更新时间倒序，最多取 n 条）
 export function recentConversations(n = 6) {
   const out = []
@@ -265,6 +374,7 @@ export function exportAll() {
       settings: db.settings,
       characters: db.characters,
       conversations: db.conversations,
+      stats: db.stats,
     },
     null,
     2
@@ -280,6 +390,7 @@ export function importAll(text) {
     db.characters = data.characters
     db.conversations = data.conversations || {}
     if (data.settings) db.settings = { ...defaultSettings(), ...data.settings }
+    if (data.stats) db.stats = { activeDays: [], sent: 0, chars: 0, ...data.stats }
     return { ok: true }
   } catch (e) {
     return { ok: false, msg: '解析失败：' + e.message }
@@ -291,6 +402,7 @@ export function resetAll() {
   db.conversations = {}
   db.profiles = {}
   db.drafts = {}
+  db.stats = { activeDays: [], sent: 0, chars: 0 }
   db.settings = defaultSettings()
 }
 

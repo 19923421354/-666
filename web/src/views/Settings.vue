@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { db, exportAll, importAll, resetAll } from '../store'
+import { db, exportAll, importAll, resetAll, ACCENTS, BUBBLE_STYLES } from '../store'
 import { STYLES } from '../engine/offline'
 import { APP_VERSION, checkUpdate, downloadAndInstall } from '../engine/update'
 import Icon from '../components/Icon.vue'
@@ -104,6 +104,21 @@ function doReset() {
   resetOpen.value = false
   router.push('/')
 }
+
+const storageText = ref('')
+function calcStorage() {
+  try {
+    let total = 0
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith('xingyu.')) total += (localStorage.getItem(k) || '').length
+    }
+    storageText.value = (total / 1024).toFixed(1) + ' KB'
+  } catch (e) {
+    storageText.value = '—'
+  }
+}
+calcStorage()
 </script>
 
 <template>
@@ -204,6 +219,35 @@ function doReset() {
         </div>
       </div>
       <div class="row">
+        <span>主题色</span>
+        <div class="accent-row">
+          <button
+            v-for="(a, id) in ACCENTS"
+            :key="id"
+            class="accent-dot"
+            :class="{ on: (db.settings.accent || 'default') === id }"
+            :style="{ background: `linear-gradient(135deg, ${a.a}, ${a.b})` }"
+            :aria-label="a.name"
+            @click="db.settings.accent = id"
+          ></button>
+        </div>
+      </div>
+      <div class="row">
+        <span>字体大小</span>
+        <div class="seg">
+          <button :class="{ on: db.settings.fontSize === 0.9 }" @click="db.settings.fontSize = 0.9">小</button>
+          <button :class="{ on: db.settings.fontSize === 1 }" @click="db.settings.fontSize = 1">标准</button>
+          <button :class="{ on: db.settings.fontSize === 1.15 }" @click="db.settings.fontSize = 1.15">大</button>
+          <button :class="{ on: db.settings.fontSize === 1.3 }" @click="db.settings.fontSize = 1.3">特大</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>气泡样式</span>
+        <div class="seg">
+          <button v-for="b in BUBBLE_STYLES" :key="b.id" :class="{ on: (db.settings.bubbleStyle || 'rounded') === b.id }" @click="db.settings.bubbleStyle = b.id">{{ b.name }}</button>
+        </div>
+      </div>
+      <div class="row">
         <span>语音朗读</span>
         <button class="switch" :class="{ on: db.settings.tts.enabled }" @click="db.settings.tts.enabled = !db.settings.tts.enabled"><i></i></button>
       </div>
@@ -226,10 +270,28 @@ function doReset() {
         <span>我的称呼</span>
         <input class="inline-input" v-model="db.settings.userName" maxlength="8" placeholder="例如：阿明" />
       </div>
+      <div class="row" style="align-items: flex-start">
+        <span>快捷短语</span>
+        <div class="phrases">
+          <div v-for="(p, i) in db.settings.quickPhrases" :key="i" class="phrase-item">
+            <input v-model="db.settings.quickPhrases[i]" placeholder="长按可删除的常用语…" />
+            <button class="icon-btn tiny" @click="db.settings.quickPhrases.splice(i, 1)" aria-label="删除短语"><Icon name="close" :size="14" /></button>
+          </div>
+          <button class="add-phrase" @click="db.settings.quickPhrases.push('')"><Icon name="plus" :size="14" /> 添加短语</button>
+        </div>
+      </div>
+      <div class="hint" style="padding-bottom: 8px">快捷短语会出现在聊天输入框上方，点一下即可发送。</div>
     </div>
 
     <div class="group">
       <div class="group-title">数据管理</div>
+      <div class="row">
+        <span>本机存储占用</span>
+        <span class="val">{{ storageText }}</span>
+      </div>
+      <button class="row-btn" @click="router.push('/stats')">
+        <span><Icon name="flame" :size="16" /> 聊天统计</span><span class="arrow">›</span>
+      </button>
       <button class="row-btn" @click="doExport">
         <span><Icon name="download" :size="16" /> 导出备份</span><span class="arrow">›</span>
       </button>
@@ -535,6 +597,55 @@ function doReset() {
   background: var(--grad);
   color: #fff;
   font-weight: 700;
+}
+.accent-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 200px;
+}
+.accent-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: all 0.15s;
+}
+.accent-dot.on {
+  border-color: var(--text);
+  transform: scale(1.15);
+}
+.phrases {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.phrase-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.phrase-item input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.icon-btn.tiny {
+  width: 30px;
+  height: 30px;
+}
+.add-phrase {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--accent-a);
+  padding: 6px 0;
 }
 .update-body {
   padding: 6px 4px 2px;

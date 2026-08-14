@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { db, charConversations, getActiveConversation, getActiveMessages, addMessage, newConversation, setActiveConversation, deleteConversation, renameConversation, updateMessage, uid, getProfile, removeSummary, clearSummaries, toggleConversationFav } from '../store'
+import { db, charConversations, getActiveConversation, getActiveMessages, addMessage, newConversation, setActiveConversation, deleteConversation, renameConversation, updateMessage, uid, getProfile, removeSummary, clearSummaries, toggleConversationFav, toggleConversationPin, recordActivity } from '../store'
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
 import MarkdownText from '../components/MarkdownText.vue'
@@ -16,6 +16,10 @@ const router = useRouter()
 
 const char = computed(() => db.characters.find((c) => c.id === route.params.id))
 const convs = computed(() => charConversations(char.value.id))
+const sortedConvs = computed(() => {
+  const arr = [...convs.value.list]
+  return arr.sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.fav) - Number(a.fav) || b.updatedAt - a.updatedAt)
+})
 const messages = computed(() => getActiveMessages(char.value))
 const profile = computed(() => getProfile(char.value.id))
 
@@ -117,6 +121,22 @@ function openNewConversation() {
   scrollToBottom(true)
 }
 
+const REACTIONS = ['❤️', '😂', '👍', '😢', '✨', '😮']
+
+function toggleReaction(m, emoji) {
+  if (!m.reactions) m.reactions = {}
+  const cur = m.reactions[emoji] || 0
+  if (cur > 0) delete m.reactions[emoji]
+  else m.reactions[emoji] = 1
+}
+
+function replayGreeting() {
+  const conv = getActiveConversation(char.value)
+  const g = char.value.greeting || '你好呀'
+  conv.messages.push({ id: uid(), role: 'assistant', content: g, ts: Date.now() })
+  scrollToBottom(true)
+}
+
 function switchConversation(id) {
   setActiveConversation(char.value.id, id)
   editId.value = null
@@ -189,18 +209,30 @@ function copyText(text) {
 function exportConversation() {
   const conv = getActiveConversation(char.value)
   const name = char.value.name
+  const lines = [`# 星语 AI · ${name} 的对话`, `时间：${new Date().toLocaleString()}`, '']
+  for (const m of conv.messages) {
+    const who = m.role === 'user' ? (db.settings.userName || '我') : name
+    if (m.content) lines.push(`**${who}**：${m.content}`, '')
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${name}-对话记录-${new Date().toISOString().slice(0, 10)}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function copyConversation() {
+  const conv = getActiveConversation(char.value)
+  const name = char.value.name
   const lines = [`星语 AI · ${name} 的对话`, `时间：${new Date().toLocaleString()}`, '']
   for (const m of conv.messages) {
     const who = m.role === 'user' ? (db.settings.userName || '我') : name
     if (m.content) lines.push(`${who}：${m.content}`, '')
   }
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${name}-对话记录-${new Date().toISOString().slice(0, 10)}.txt`
-  a.click()
-  URL.revokeObjectURL(url)
+  copyText(lines.join('\n'))
+  showToast('已复制对话内容')
 }
 
 function showToast(msg) {
@@ -315,15 +347,22 @@ function send(text) {
   if (text === undefined) input.value = ''
   const msg = makeUserMessage(t)
   addMessage(char.value.id, msg)
+  recordActivity(1, t.length)
   extractProfile(t, profile.value)
   generate()
   scrollToBottom(true)
 }
 
-function onKeydown(e) {
+const onKeydown = (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     send()
+    return
+  }
+  if (e.key === 'Escape') {
+    if (renameOpen.value || confirmOpen.value || memOpen.value || sheetOpen.value) {
+      ;[renameOpen, confirmOpen, memOpen, sheetOpen].forEach((r) => (r.value = false))
+    }
   }
 }
 
@@ -433,6 +472,8 @@ const suggestions = computed(() => {
   return last ? pool : []
 })
 
+const quickPhrases = computed(() => (db.settings.quickPhrases || []).filter((p) => p && p.trim()))
+
 onBeforeUnmount(() => {
   stopSpeak()
   if (controller) controller.abort()
@@ -476,7 +517,8 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <div class="msg-list" ref="listRef">
+    <div class="chat-scroll" ref="listRef">
+    <div class="msg-list">
       <div v-if="isLocalLoading" class="model-loading">
         <div class="bar"><div class="fill" :class="{ unknown: progressPct === null }" :style="progressPct !== null ? { width: progressPct + '%' } : {}"></div></div>
         <span class="lbl">{{ localModelState.progress.text || '正在唤醒内置 AI 模型…' }}</span>
@@ -509,14 +551,29 @@ onBeforeUnmount(() => {
               <button v-if="m.role === 'user'" class="mini" @click="startEdit(idx)">编辑</button>
               <button class="mini danger" @click="removeMessage(idx)">删除</button>
             </div>
+            <div v-if="!m.thinking && m.content" class="react-row">
+              <button v-for="r in REACTIONS" :key="r" :class="['react', { on: m.reactions && m.reactions[r] }]" @click="toggleReaction(m, r)">{{ r }}</button>
+            </div>
           </template>
         </div>
       </div>
       <div v-if="messages.length === 0" class="empty-tip">发送一句话，开启你们的对话吧</div>
-      <button v-if="messages.length >= 2" class="summarize-btn" :disabled="summarizing" @click="doSummarize">
-        <Icon name="sparkles" :size="16" />
-        {{ summarizing ? '正在总结…' : '智能总结这段对话' }}
-      </button>
+      <div class="chat-extra">
+        <button class="summarize-btn" :disabled="summarizing || messages.length < 2" @click="doSummarize">
+          <Icon name="sparkles" :size="16" />
+          {{ summarizing ? '正在总结…' : '智能总结这段对话' }}
+        </button>
+        <button class="summarize-btn ghost" @click="replayGreeting">
+          <Icon name="refresh" :size="16" />
+          重播开场白
+        </button>
+      </div>
+    </div>
+    </div>
+
+    <div v-if="quickPhrases.length" class="suggest-row">
+      <span class="suggest-lbl">快捷短语</span>
+      <button v-for="(p, i) in quickPhrases" :key="i" class="suggest-chip" @click="send(p)">{{ p }}</button>
     </div>
 
     <div v-if="suggestions.length" class="suggest-row">
@@ -549,11 +606,37 @@ onBeforeUnmount(() => {
         <button class="conv-item new" @click="openNewConversation">
           <Icon name="plus" :size="18" /> 开启新对话
         </button>
-        <div v-for="conv in convs.list" :key="conv.id" :class="['conv-item', { active: conv.id === convs.activeId }]" @click="switchConversation(conv.id)">
+        <template v-for="conv in sortedConvs" :key="conv.id">
+          <div v-if="conv.pinned" class="conv-item" :class="['pinned', { active: conv.id === convs.activeId }]" @click="switchConversation(conv.id)">
+            <div class="conv-main">
+              <div class="conv-title">
+                <Icon name="pin" :size="13" class="pin-ico" />
+                {{ conv.title }}
+              </div>
+              <div class="conv-meta">{{ conv.messages.length }} 条消息 · 已置顶</div>
+            </div>
+            <button :class="['icon-btn', 'tiny', { star: conv.fav }]" @click.stop="toggleConversationFav(char.id, conv.id)" aria-label="收藏">
+              <Icon name="star" :size="16" :filled="conv.fav" />
+            </button>
+            <button class="icon-btn tiny" @click.stop="toggleConversationPin(char.id, conv.id)" aria-label="取消置顶">
+              <Icon name="pin" :size="16" />
+            </button>
+            <button class="icon-btn tiny" @click.stop="openRename(conv)" aria-label="重命名">
+              <Icon name="edit" :size="16" />
+            </button>
+            <button class="icon-btn tiny danger" @click.stop="askConfirm('删除这段对话？', () => removeConversation(conv.id))" aria-label="删除">
+              <Icon name="trash" :size="16" />
+            </button>
+          </div>
+        </template>
+        <div v-for="conv in sortedConvs" :key="conv.id" :class="['conv-item', { active: conv.id === convs.activeId }]" @click="switchConversation(conv.id)">
           <div class="conv-main">
             <div class="conv-title">{{ conv.title }}</div>
             <div class="conv-meta">{{ conv.messages.length }} 条消息</div>
           </div>
+          <button class="icon-btn tiny" @click.stop="toggleConversationPin(char.id, conv.id)" aria-label="置顶">
+            <Icon name="pin" :size="16" />
+          </button>
           <button :class="['icon-btn', 'tiny', { star: conv.fav }]" @click.stop="toggleConversationFav(char.id, conv.id)" aria-label="收藏">
             <Icon name="star" :size="16" :filled="conv.fav" />
           </button>
@@ -672,12 +755,29 @@ export default {
   gap: 2px;
 }
 .msg-list {
-  flex: 1;
   overflow-y: auto;
   padding: 14px 14px 8px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.chat-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.chat-scroll .msg-list {
+  flex: 1;
+  overflow: visible;
+}
+.chat-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  padding-bottom: 8px;
 }
 .model-loading {
   display: flex;
@@ -835,6 +935,33 @@ export default {
 .mini.danger:hover {
   color: var(--danger);
 }
+.react-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 0 4px;
+}
+.msg.me .react-row {
+  justify-content: flex-end;
+}
+.react {
+  font-size: 13px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 6px;
+  opacity: 0.55;
+  transition: all 0.15s;
+}
+.react:hover {
+  opacity: 1;
+  background: var(--glass);
+  transform: scale(1.12);
+}
+.react.on {
+  opacity: 1;
+  background: rgba(124, 108, 255, 0.16);
+  outline: 1px solid rgba(124, 108, 255, 0.4);
+}
 .suggest-row {
   display: flex;
   gap: 8px;
@@ -943,6 +1070,17 @@ export default {
 }
 .conv-item.active {
   border-color: var(--accent-a);
+}
+.conv-item.pinned {
+  border-style: dashed;
+  background: rgba(124, 108, 255, 0.06);
+}
+.pin-ico {
+  color: var(--accent-a);
+  vertical-align: -2px;
+}
+.conv-title .pin-ico {
+  margin-right: 2px;
 }
 .conv-item.new {
   justify-content: center;

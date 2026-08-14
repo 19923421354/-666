@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { db, upsertCharacter, deleteCharacter, uid, parseCharacterImport } from '../store'
 import { STYLES } from '../engine/offline'
-import { GRADIENT_PRESETS } from '../data/presets'
+import { GRADIENT_PRESETS, CHARACTER_TEMPLATES } from '../data/presets'
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
 import Icon from '../components/Icon.vue'
@@ -28,6 +28,7 @@ const form = ref({
   world: '',
   greeting: '',
   exampleDialogs: '',
+  tags: [],
   avatar: { type: 'gradient', from: GRADIENT_PRESETS[0][0], to: GRADIENT_PRESETS[0][1] },
 })
 
@@ -43,6 +44,7 @@ if (editing.value) {
     world: c.world || '',
     greeting: c.greeting || '',
     exampleDialogs: Array.isArray(c.exampleDialogs) ? c.exampleDialogs.join('\n\n') : (c.exampleDialogs || ''),
+    tags: Array.isArray(c.tags) ? [...c.tags] : [],
     avatar: c.avatar || form.value.avatar,
   }
 }
@@ -51,6 +53,27 @@ const confirmOpen = ref(false)
 const avatarMode = ref('gradient')
 const fileInput = ref(null)
 const importInput = ref(null)
+const tagInput = ref('')
+const TAG_SUGGESTIONS = ['猫娘', '温柔', '高冷', '元气', '傲娇', '古风', '校园', '科幻', '治愈', '神秘', '搞怪', '医生', '老师', '骑士']
+
+const suggestedTags = computed(() => TAG_SUGGESTIONS.filter((t) => !form.value.tags.includes(t)))
+
+function toggleTag(t) {
+  const i = form.value.tags.indexOf(t)
+  if (i >= 0) form.value.tags.splice(i, 1)
+  else form.value.tags.push(t)
+}
+
+const template = ref('')
+
+function applyTemplate(t) {
+  template.value = t.name
+  form.value.style = t.style
+  form.value.styleDesc = ''
+  form.value.persona = t.persona
+  form.value.greeting = t.greeting
+  form.value.tagline = t.tagline
+}
 
 function currentObject() {
   return {
@@ -66,9 +89,16 @@ function currentObject() {
       .split(/\n{2,}/)
       .map((s) => s.trim())
       .filter(Boolean),
+    tags: form.value.tags.filter((t) => t && t.trim()).map((t) => t.trim()),
     avatar: { ...form.value.avatar, initial: form.value.avatar.type === 'gradient' ? form.value.name.slice(0, 1) : undefined },
     updatedAt: Date.now(),
   }
+}
+
+function addTag(e) {
+  const v = (e.target.value || '').trim()
+  if (v && !form.value.tags.includes(v)) form.value.tags.push(v)
+  e.target.value = ''
 }
 
 function exportCharacter() {
@@ -160,6 +190,13 @@ function remove() {
     </header>
 
     <div class="form">
+      <div v-if="!editing" class="tpl-pick">
+        <div class="tpl-title"><Icon name="gift" :size="15" /> 从模板开始（可选）</div>
+        <div class="tpl-row">
+          <button v-for="t in CHARACTER_TEMPLATES" :key="t.name" class="chip" :class="{ active: template === t.name }" @click="applyTemplate(t)">{{ t.name }}</button>
+        </div>
+      </div>
+
       <div class="avatar-pick">
         <div class="avatar-preview" @click="avatarMode = avatarMode === 'gradient' ? 'image' : 'gradient'">
           <Avatar :avatar="form.avatar" :name="form.name" :size="84" />
@@ -193,6 +230,22 @@ function remove() {
       <div class="field">
         <label>一句话介绍</label>
         <input v-model="form.tagline" maxlength="30" placeholder="例如：粘人又爱撒娇的猫娘室友" />
+      </div>
+
+      <div class="field">
+        <label>角色标签（用于首页分类）</label>
+        <div class="tag-input-row">
+          <input :value="tagInput" @input="tagInput = $event.target.value" @keydown.enter.prevent="addTag($event)" @keydown.comma.prevent="addTag($event)" placeholder="输入标签后回车，如：猫娘 / 温柔 / 古风" />
+        </div>
+        <div v-if="form.tags.length" class="tag-edit-list">
+          <span v-for="(t, i) in form.tags" :key="i" class="tag-badge">
+            {{ t }}
+            <button class="tag-x" @click="form.tags.splice(i, 1)" aria-label="删除标签">×</button>
+          </span>
+        </div>
+        <div v-if="suggestedTags.length" class="tag-suggest">
+          <button v-for="t in suggestedTags" :key="t" class="chip tag-chip-sm" :class="{ active: form.tags.includes(t) }" @click="toggleTag(t)">{{ t }}</button>
+        </div>
       </div>
 
       <div class="field">
@@ -260,6 +313,27 @@ function remove() {
 .form {
   padding: 10px 18px 30px;
 }
+.tpl-pick {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+.tpl-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.tpl-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .avatar-pick {
   display: flex;
   flex-direction: column;
@@ -311,6 +385,43 @@ function remove() {
 .btn-sm {
   padding: 7px 14px;
   font-size: 13px;
+}
+.tag-input-row {
+  display: flex;
+  gap: 6px;
+}
+.tag-edit-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(124, 108, 255, 0.14);
+  border: 1px solid rgba(124, 108, 255, 0.4);
+  color: var(--accent-a);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.tag-x {
+  color: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.tag-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.tag-chip-sm {
+  padding: 4px 10px;
+  font-size: 12px;
 }
 .actions {
   display: flex;

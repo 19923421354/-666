@@ -17,10 +17,11 @@
   --radius: 18px;
   --radius-sm: 12px;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-  --user-bubble: linear-gradient(120deg, #5b4dff, #ff5fa2);
+  --user-bubble: linear-gradient(120deg, var(--accent-a), var(--accent-b));
   --glass: rgba(255, 255, 255, 0.06);
   --glass-line: rgba(255, 255, 255, 0.12);
   --input-bg: #232837;
+  --font-scale: 1;
 }
 
 [data-theme='light'] {
@@ -57,9 +58,25 @@ body {
     'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
   background: var(--bg);
   color: var(--text);
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale));
   line-height: 1.6;
   overscroll-behavior: none;
+}
+
+/* 气泡样式 */
+[data-bubble='soft'] .bubble {
+  border-radius: 18px;
+}
+[data-bubble='soft'] .msg.me .bubble,
+[data-bubble='soft'] .msg.bot .bubble {
+  border-radius: 18px;
+}
+[data-bubble='sharp'] .bubble {
+  border-radius: 8px;
+}
+[data-bubble='sharp'] .msg.me .bubble,
+[data-bubble='sharp'] .msg.bot .bubble {
+  border-radius: 8px;
 }
 
 a {
