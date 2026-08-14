@@ -5,6 +5,7 @@ import { db, charConversations, getActiveConversation, getActiveMessages, addMes
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
 import MarkdownText from '../components/MarkdownText.vue'
+import Icon from '../components/Icon.vue'
 import { chatReply, summarizeConversation } from '../engine/chat'
 import { modelState as localModelState } from '../engine/local'
 import { extractProfile } from '../engine/offline'
@@ -28,10 +29,15 @@ const renameText = ref('')
 const confirmOpen = ref(false)
 const confirmAction = ref(null)
 const listRef = ref(null)
+const taRef = ref(null)
 const summarizing = ref(false)
 const memOpen = ref(false)
 const toastMsg = ref('')
+const editId = ref(null)
+const editText = ref('')
+const listening = ref(false)
 let toastTimer = null
+let recognition = null
 
 let controller = null
 let currentMsgId = null
@@ -41,6 +47,7 @@ watch(
   () => {
     if (char.value) ensureExist()
     nextTick(locateFromQuery)
+    input.value = db.drafts && db.drafts[char.value.id] ? db.drafts[char.value.id] : ''
   }
 )
 
@@ -48,6 +55,14 @@ watch(() => route.query, () => locateFromQuery())
 
 onMounted(() => {
   nextTick(locateFromQuery)
+  if (char.value) input.value = db.drafts && db.drafts[char.value.id] ? db.drafts[char.value.id] : ''
+})
+
+watch(input, (v) => {
+  if (char.value) {
+    if (!db.drafts) db.drafts = {}
+    db.drafts[char.value.id] = v
+  }
 })
 
 function locateFromQuery() {
@@ -79,7 +94,7 @@ function scrollToBottom(force = false) {
   nextTick(() => {
     const el = listRef.value
     if (!el) return
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 140
     if (force || nearBottom) el.scrollTop = el.scrollHeight
   })
 }
@@ -96,12 +111,16 @@ function isPreset() {
 
 function openNewConversation() {
   newConversation(char.value)
+  editId.value = null
+  editText.value = ''
   sheetOpen.value = false
   scrollToBottom(true)
 }
 
 function switchConversation(id) {
   setActiveConversation(char.value.id, id)
+  editId.value = null
+  editText.value = ''
   sheetOpen.value = false
   scrollToBottom(true)
 }
@@ -137,6 +156,28 @@ function removeMessage(idx) {
   const conv = getActiveConversation(char.value)
   conv.messages.splice(idx, 1)
   scrollToBottom(true)
+}
+
+function startEdit(idx) {
+  const m = messages.value[idx]
+  if (!m || m.role !== 'user') return
+  editId.value = m.id
+  editText.value = m.content
+}
+
+function saveEdit() {
+  const conv = getActiveConversation(char.value)
+  const i = conv.messages.findIndex((m) => m.id === editId.value)
+  if (i >= 0) {
+    conv.messages[i].content = editText.value
+    // 截断被编辑消息之后的回复，并自动重新生成
+    conv.messages.splice(i + 1)
+    conv.updatedAt = Date.now()
+  }
+  editId.value = null
+  editText.value = ''
+  scrollToBottom(true)
+  nextTick(() => generate())
 }
 
 function copyText(text) {
@@ -214,7 +255,9 @@ async function generate() {
   const msgId = uid()
   currentMsgId = msgId
   addMessage(c.id, { id: msgId, role: 'assistant', content: '', ts: Date.now(), thinking: true })
-  const history = getActiveMessages(c).slice(0, -1)
+  const all = getActiveMessages(c)
+  // 历史消息 = 除去刚追加的空占位消息
+  const history = all[all.length - 1] && all[all.length - 1].id === msgId ? all.slice(0, -1) : all
   const modelLoading = settings.provider === 'local'
 
   if (modelLoading) {
@@ -266,13 +309,13 @@ async function generate() {
   }
 }
 
-function send() {
-  const text = input.value.trim()
-  if (!text || generating.value || !char.value) return
-  input.value = ''
-  const msg = makeUserMessage(text)
+function send(text) {
+  const t = (text === undefined ? input.value : text).trim()
+  if (!t || generating.value || !char.value) return
+  if (text === undefined) input.value = ''
+  const msg = makeUserMessage(t)
   addMessage(char.value.id, msg)
-  extractProfile(text, profile.value)
+  extractProfile(t, profile.value)
   generate()
   scrollToBottom(true)
 }
@@ -320,9 +363,84 @@ const progressPct = computed(() => {
   return Math.min(100, Math.round((loaded / total) * 100))
 })
 
+// 语音输入
+function speechSupported() {
+  return typeof window !== 'undefined' && !!((window.SpeechRecognition || window.webkitSpeechRecognition))
+}
+
+function toggleVoice() {
+  if (!speechSupported()) {
+    showToast('当前浏览器不支持语音输入')
+    return
+  }
+  if (listening.value) {
+    stopVoice()
+    return
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+  recognition = new SR()
+  recognition.lang = db.settings.lang === 'en' ? 'en-US' : 'zh-CN'
+  recognition.interimResults = true
+  recognition.continuous = false
+  listening.value = true
+  input.value = ''
+  recognition.onresult = (e) => {
+    let finalText = ''
+    for (let i = 0; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript
+    }
+    input.value = finalText || input.value
+  }
+  recognition.onend = () => {
+    listening.value = false
+    recognition = null
+  }
+  recognition.onerror = () => {
+    listening.value = false
+    recognition = null
+    showToast('没能听清，请再试一次')
+  }
+  recognition.start()
+}
+
+function stopVoice() {
+  if (recognition) {
+    try {
+      recognition.stop()
+    } catch (e) {}
+  }
+  listening.value = false
+}
+
+// 快捷回复建议
+const SUGGEST = {
+  cute: ['给我讲个开心的小故事嘛', '我最近有点累，想被安慰', '如果我养了一只猫，你会吃醋吗'],
+  gentle: ['我今天有点低落，陪我说说话', '你最近有什么开心的事吗', '给正在努力的我一句鼓励吧'],
+  cool: ['别装了，你是不是在关心我', '陪我聊聊天，就今晚', '如果是你，会怎么解决这个麻烦'],
+  energetic: ['来点好玩的！今天去哪冒险', '讲讲你最近遇到的好事', '打气！我今天有点没动力'],
+  mystery: ['帮我看看今天的运势', '我们的相遇是注定的吗', '你从星象里看到了什么'],
+  tsundere: ['哼，你是不是口是心非', '我就想黏着你，不行吗', '其实你也挺关心我的对吧'],
+  funny: ['来个冷笑话，越冷越好', '假设你开一家店，会卖什么', '我emo了，快用段子治好我'],
+}
+
+const suggestions = computed(() => {
+  if (generating.value) return []
+  const style = char.value.style || 'gentle'
+  const pool = SUGGEST[style] || SUGGEST.gentle
+  const hasUser = messages.value.some((m) => m.role === 'user')
+  if (!hasUser) return []
+  const last = [...messages.value].reverse().find((m) => m.role === 'assistant')
+  return last ? pool : []
+})
+
 onBeforeUnmount(() => {
   stopSpeak()
   if (controller) controller.abort()
+  if (listening.value && recognition) {
+    try {
+      recognition.abort()
+    } catch (e) {}
+  }
 })
 </script>
 
@@ -330,7 +448,7 @@ onBeforeUnmount(() => {
   <div class="chat-page" v-if="char">
     <header class="chat-top">
       <button class="icon-btn" @click="router.push('/')" aria-label="返回">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+        <Icon name="back" :size="20" />
       </button>
       <div class="who" @click="sheetOpen = true">
         <Avatar :avatar="char.avatar" :name="char.name" :size="36" />
@@ -341,19 +459,19 @@ onBeforeUnmount(() => {
       </div>
       <div class="actions">
         <button class="icon-btn" @click="memOpen = true" aria-label="记忆">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v3H9zM9 3v1a4 4 0 0 0 4 4 4 4 0 0 0 4-4V3M9 12h.01M15 12h.01M9 17h.01M15 17h.01M5 7a2 2 0 0 1 2 2v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 1 2-2"></path></svg>
+          <Icon name="memory" :size="20" />
         </button>
         <button class="icon-btn" @click="openNewConversation" aria-label="新对话">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+          <Icon name="plus" :size="20" />
         </button>
         <button class="icon-btn" @click="sheetOpen = true" aria-label="对话列表">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          <Icon name="message" :size="20" />
         </button>
         <button class="icon-btn" @click="exportConversation" aria-label="导出对话">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+          <Icon name="download" :size="20" />
         </button>
         <button class="icon-btn" @click="router.push(`/character/${char.id}/edit`)" aria-label="编辑角色">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+          <Icon name="edit" :size="20" />
         </button>
       </div>
     </header>
@@ -370,48 +488,66 @@ onBeforeUnmount(() => {
       <div v-for="(m, idx) in messages" :key="m.id" :data-msg-id="m.id" :class="['msg', m.role === 'user' ? 'me' : 'bot']">
         <Avatar v-if="m.role === 'assistant'" :avatar="char.avatar" :name="char.name" :size="34" />
         <div class="bubble-wrap">
-          <div :class="['bubble', { error: m.error }]">
-            <span v-if="m.thinking && !m.content" class="thinking"><i></i><i></i><i></i></span>
-            <MarkdownText v-else-if="m.role === 'assistant' && m.content" :text="m.content" />
-            <template v-else>{{ m.content }}</template>
+          <div v-if="editId === m.id" class="bubble edit-bubble">
+            <textarea v-model="editText" rows="3" @keydown.enter.exact.prevent="saveEdit"></textarea>
+            <div class="edit-actions">
+              <button class="mini" @click="editId = null; editText = ''">取消</button>
+              <button class="mini primary" @click="saveEdit">保存并重新回复</button>
+            </div>
           </div>
-          <div v-if="!m.thinking && m.content" class="msg-actions">
-            <span class="time">{{ formatTime(m.ts) }}</span>
-            <button v-if="m.role === 'assistant' && ttsSupported()" class="mini" @click="playTts(m)">朗读</button>
-            <button class="mini" @click="copyText(m.content)">复制</button>
-            <button v-if="m.role === 'assistant'" class="mini" @click="regenerate">重试</button>
-            <button class="mini danger" @click="removeMessage(idx)">删除</button>
-          </div>
+          <template v-else>
+            <div :class="['bubble', { error: m.error }]">
+              <span v-if="m.thinking && !m.content" class="thinking"><i></i><i></i><i></i></span>
+              <MarkdownText v-else-if="m.role === 'assistant' && m.content" :text="m.content" />
+              <template v-else>{{ m.content }}</template>
+            </div>
+            <div v-if="!m.thinking && m.content" class="msg-actions">
+              <span class="time">{{ formatTime(m.ts) }}</span>
+              <button v-if="m.role === 'assistant' && ttsSupported()" class="mini" @click="playTts(m)">朗读</button>
+              <button class="mini" @click="copyText(m.content)">复制</button>
+              <button v-if="m.role === 'assistant'" class="mini" @click="regenerate">重试</button>
+              <button v-if="m.role === 'user'" class="mini" @click="startEdit(idx)">编辑</button>
+              <button class="mini danger" @click="removeMessage(idx)">删除</button>
+            </div>
+          </template>
         </div>
       </div>
       <div v-if="messages.length === 0" class="empty-tip">发送一句话，开启你们的对话吧</div>
       <button v-if="messages.length >= 2" class="summarize-btn" :disabled="summarizing" @click="doSummarize">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-9 9 9M5 10v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V10M9 21v-6h6v6"></path></svg>
+        <Icon name="sparkles" :size="16" />
         {{ summarizing ? '正在总结…' : '智能总结这段对话' }}
       </button>
+    </div>
+
+    <div v-if="suggestions.length" class="suggest-row">
+      <span class="suggest-lbl">想聊点别的？</span>
+      <button v-for="(s, i) in suggestions.slice(0, 3)" :key="i" class="suggest-chip" @click="send(s)">{{ s }}</button>
     </div>
 
     <div class="input-bar">
       <textarea
         v-model="input"
-        :placeholder="`对 ${char.name} 说点什么…`"
+        :placeholder="listening ? '正在聆听…' : `对 ${char.name} 说点什么…`"
         rows="1"
         @keydown="onKeydown"
         @input="autoGrow"
         ref="taRef"
       ></textarea>
+      <button class="mic-btn" :class="{ on: listening }" @click="toggleVoice" aria-label="语音输入">
+        <Icon :name="listening ? 'micOff' : 'mic'" :size="20" />
+      </button>
       <button v-if="!generating" class="send-btn" :disabled="!input.trim()" @click="send" aria-label="发送">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path></svg>
+        <Icon name="send" :size="20" />
       </button>
       <button v-else class="send-btn stop" @click="stop" aria-label="停止">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+        <Icon name="stop" :size="18" />
       </button>
     </div>
 
     <Sheet :show="sheetOpen" title="对话记录" @close="sheetOpen = false">
       <div class="conv-list">
         <button class="conv-item new" @click="openNewConversation">
-          <span class="plus">+</span> 开启新对话
+          <Icon name="plus" :size="18" /> 开启新对话
         </button>
         <div v-for="conv in convs.list" :key="conv.id" :class="['conv-item', { active: conv.id === convs.activeId }]" @click="switchConversation(conv.id)">
           <div class="conv-main">
@@ -419,13 +555,13 @@ onBeforeUnmount(() => {
             <div class="conv-meta">{{ conv.messages.length }} 条消息</div>
           </div>
           <button :class="['icon-btn', 'tiny', { star: conv.fav }]" @click.stop="toggleConversationFav(char.id, conv.id)" aria-label="收藏">
-            <svg width="16" height="16" viewBox="0 0 24 24" :fill="conv.fav ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            <Icon name="star" :size="16" :filled="conv.fav" />
           </button>
           <button class="icon-btn tiny" @click.stop="openRename(conv)" aria-label="重命名">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            <Icon name="edit" :size="16" />
           </button>
           <button class="icon-btn tiny danger" @click.stop="askConfirm('删除这段对话？', () => removeConversation(conv.id))" aria-label="删除">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path></svg>
+            <Icon name="trash" :size="16" />
           </button>
         </div>
       </div>
@@ -453,7 +589,7 @@ onBeforeUnmount(() => {
       <div v-for="(s, idx) in profile.summaries" :key="idx" class="mem-item">
         <span>{{ s }}</span>
         <button class="icon-btn tiny danger" @click="delMemory(idx)" aria-label="删除">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+          <Icon name="close" :size="15" />
         </button>
       </div>
       <button v-if="profile.summaries && profile.summaries.length" class="btn btn-ghost" style="margin-top: 12px" @click="clearMemories">清空全部记忆</button>
@@ -525,6 +661,11 @@ export default {
   border-radius: 50%;
   background: var(--ok);
   display: inline-block;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 .actions {
   display: flex;
@@ -584,6 +725,11 @@ export default {
   display: flex;
   gap: 8px;
   align-items: flex-start;
+  animation: msg-in 0.22s ease both;
+}
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 .msg.me {
   justify-content: flex-end;
@@ -626,6 +772,25 @@ export default {
   background: rgba(255, 95, 109, 0.1);
   border-color: rgba(255, 95, 109, 0.3);
   font-size: 13px;
+}
+.edit-bubble {
+  background: var(--card-2);
+  width: min(320px, 100%);
+}
+.edit-bubble textarea {
+  min-height: 70px;
+  background: var(--input-bg);
+  font-size: 14px;
+}
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+.edit-actions .mini.primary {
+  color: var(--accent-a);
+  font-weight: 700;
 }
 .thinking {
   display: inline-flex;
@@ -670,6 +835,38 @@ export default {
 .mini.danger:hover {
   color: var(--danger);
 }
+.suggest-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 12px 2px;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.suggest-row::-webkit-scrollbar {
+  display: none;
+}
+.suggest-lbl {
+  font-size: 11px;
+  color: var(--text-faint);
+  align-self: center;
+  white-space: nowrap;
+}
+.suggest-chip {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.suggest-chip:active {
+  background: rgba(124, 108, 255, 0.14);
+  border-color: var(--accent-a);
+  color: var(--accent-a);
+}
 .input-bar {
   display: flex;
   align-items: flex-end;
@@ -683,6 +880,29 @@ export default {
   max-height: 140px;
   line-height: 1.5;
   padding: 10px 14px;
+}
+.mic-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.mic-btn.on {
+  background: var(--grad);
+  color: #fff;
+  border-color: transparent;
+  animation: mic-pulse 1.4s infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 95, 162, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 95, 162, 0); }
 }
 .send-btn {
   width: 42px;
@@ -729,9 +949,7 @@ export default {
   border-style: dashed;
   color: var(--text-dim);
   font-weight: 600;
-}
-.conv-item.new .plus {
-  font-size: 18px;
+  gap: 6px;
 }
 .conv-main {
   flex: 1;

@@ -41,6 +41,7 @@ export const db = reactive({
   characters: [],
   conversations: {},
   profiles: {},
+  drafts: {},
 })
 
 function load() {
@@ -51,6 +52,7 @@ function load() {
   }
   db.conversations = storageGet('conversations', {})
   db.profiles = storageGet('profiles', {})
+  db.drafts = storageGet('drafts', {})
 }
 
 let saveTimer = null
@@ -61,6 +63,7 @@ function scheduleSave() {
     storageSet('characters', db.characters)
     storageSet('conversations', db.conversations)
     storageSet('profiles', db.profiles)
+    storageSet('drafts', db.drafts)
   }, 120)
 }
 
@@ -232,6 +235,27 @@ export function deleteCharacter(charId) {
   delete db.conversations[charId]
 }
 
+export function toggleCharacterFav(charId) {
+  const c = db.characters.find((x) => x.id === charId)
+  if (c) c.fav = !c.fav
+}
+
+// 最近聊过的会话（跨角色，按更新时间倒序，最多取 n 条）
+export function recentConversations(n = 6) {
+  const out = []
+  for (const c of db.characters) {
+    const convs = db.conversations[c.id]
+    if (!convs || !convs.list) continue
+    for (const conv of convs.list) {
+      const userCount = conv.messages ? conv.messages.filter((m) => m.role === 'user').length : 0
+      if (userCount === 0) continue
+      out.push({ char: c, conv })
+    }
+  }
+  out.sort((a, b) => b.conv.updatedAt - a.conv.updatedAt)
+  return out.slice(0, n)
+}
+
 export function exportAll() {
   return JSON.stringify(
     {
@@ -266,6 +290,7 @@ export function resetAll() {
   db.characters = []
   db.conversations = {}
   db.profiles = {}
+  db.drafts = {}
   db.settings = defaultSettings()
 }
 

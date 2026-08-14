@@ -1,5 +1,6 @@
 <script setup>
 import { useRouter } from 'vue-router'
+import Icon from '../components/Icon.vue'
 const router = useRouter()
 </script>
 
@@ -7,7 +8,7 @@ const router = useRouter()
   <div class="page donate">
     <header class="top">
       <button class="icon-btn" @click="router.back()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+        <Icon name="back" :size="20" />
       </button>
       <h2>赞赏支持</h2>
       <div style="width: 38px"></div>
@@ -21,7 +22,7 @@ const router = useRouter()
     <div class="cards">
       <div class="pay-card">
         <div class="pay-head wechat">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8.7 4C4.9 4 2 6.6 2 9.9c0 1.9 1 3.5 2.6 4.6L4 17l2.7-1.4c.7.2 1.4.3 2 .3.4 0 .8 0 1.2-.1-.2-.5-.3-1-.3-1.5 0-2.9 2.7-5.3 6-5.3.3 0 .7 0 1 .1C15.9 6.2 12.6 4 8.7 4zM6 8.4c-.5 0-.9-.4-.9-.9s.4-.9.9-.9.9.4.9.9-.4.9-.9.9zm5 0c-.5 0-.9-.4-.9-.9s.4-.9.9-.9.9.4.9.9-.4.9-.9.9zm7-4.4c-3.3 0-6 2.3-6 5.1s2.7 5.1 6 5.1c.6 0 1.2-.1 1.7-.2L21 15.5l-1-2.1c1.3-.9 2.1-2.2 2.1-3.8 0-2.9-2.7-5.2-6-5.2zm-3.5 6.3c-.4 0-.7-.3-.7-.7s.3-.7.7-.7.7.3.7.7-.3.7-.7.7zm3.5 0c-.4 0-.7-.3-.7-.7s.3-.7.7-.7.7.3.7.7-.3.7-.7.7z"/></svg>
+          <Icon name="message" :size="18" />
           微信
         </div>
         <img src="/donate/wechat.png" alt="微信收款码" />
@@ -30,7 +31,7 @@ const router = useRouter()
 
       <div class="pay-card">
         <div class="pay-head alipay">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21.4 16.6c-.9-.4-1.8-.8-2.6-1.1.8-1.5 1.4-3.1 1.4-4.7v-1H12v2.2h5.1c-.2 1-.7 2-1.3 2.9-1.5-.7-3.1-1.5-4.5-2.5l-1.3 1.6c1.4 1 3 1.9 4.6 2.6-.9.4-2 .6-3.1.5-2.5 0-4.7-.9-6-2.4l-1.5 1.4C6.1 18.1 8.6 19.3 11.5 19.3c1.2 0 2.3-.2 3.3-.6 1.5.9 3.2 1.5 4.9 1.5 1.7 0 3.2-.7 4.2-1.9-.7.1-1.5-.2-2.5-.7zM12 21C6.5 21 2 16.5 2 11S6.5 1 12 1s10 4.5 10 10-4.5 10-10 10z"/></svg>
+          <Icon name="check" :size="18" />
           支付宝
         </div>
         <img src="/donate/alipay.jpg" alt="支付宝收款码" />

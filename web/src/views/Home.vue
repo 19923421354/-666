@@ -1,10 +1,11 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { db, searchMessages, parseCharacterImport, upsertCharacter } from '../store'
+import { db, searchMessages, parseCharacterImport, upsertCharacter, toggleCharacterFav, recentConversations } from '../store'
 import CharacterCard from '../components/CharacterCard.vue'
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
+import Icon from '../components/Icon.vue'
 
 const router = useRouter()
 const keyword = ref('')
@@ -15,10 +16,15 @@ const searchKw = ref('')
 const importFile = ref(null)
 const results = computed(() => searchMessages(searchKw.value))
 
+const recents = computed(() => recentConversations(5))
+
 const list = computed(() => {
   let arr = [...db.characters]
   if (tab.value === 'mine') {
     arr = arr.filter((c) => !c.id.startsWith('preset-'))
+  }
+  if (tab.value === 'fav') {
+    arr = arr.filter((c) => c.fav)
   }
   if (keyword.value.trim()) {
     const k = keyword.value.trim().toLowerCase()
@@ -66,6 +72,25 @@ function snippet(text) {
   const start = Math.max(0, idx - 10)
   return (start > 0 ? '…' : '') + t.slice(start, idx + k.length + 24) + (start + k.length + 24 < t.length ? '…' : '')
 }
+
+// 今日运势：按日期种子生成，每天固定
+const today = new Date()
+const dateKey = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`
+const LUCK = [
+  { lv: '大吉', emoji: '✨', text: '星光正盛，今天的你走到哪里都在发光', grad: 'linear-gradient(120deg, #7c6cff, #ff5fa2)' },
+  { lv: '上上签', emoji: '🌟', text: '适合大胆开口，说出心里的话，会有好事发生', grad: 'linear-gradient(120deg, #ff9a9e, #fecfef)' },
+  { lv: '好运', emoji: '🍀', text: '今天会遇到久违的默契，认真回应每一句话', grad: 'linear-gradient(120deg, #a8e063, #56ab2f)' },
+  { lv: '小确幸', emoji: '💫', text: '适合许愿与告白，温柔的话多说一点，温暖就多一分', grad: 'linear-gradient(120deg, #84fab0, #8fd3f4)' },
+  { lv: '心意相通', emoji: '💌', text: 'TA 也许正等着你主动说一句话，今天就是好时机', grad: 'linear-gradient(120deg, #fbc2eb, #a6c1ee)' },
+]
+const luck = LUCK[dateKey.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % LUCK.length]
+
+const charCount = computed(() => db.characters.length)
+const lastMsgOf = (conv) => {
+  if (!conv || !conv.messages) return ''
+  const arr = [...conv.messages].reverse().find((m) => m.content)
+  return arr ? arr.content.slice(0, 34) : ''
+}
 </script>
 
 <template>
@@ -75,46 +100,78 @@ function snippet(text) {
         <div class="logo">星</div>
         <div>
           <h1>星语 AI</h1>
-          <p>你的 AI 角色扮演伙伴</p>
+          <p>你的 AI 角色扮演伙伴 · {{ charCount }} 位角色</p>
         </div>
       </div>
       <div class="head-actions">
         <button class="icon-btn" @click="searchOpen = true" aria-label="搜索消息">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
+          <Icon name="search" :size="20" />
         </button>
         <button class="icon-btn" @click="openImport" aria-label="导入角色">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"></path></svg>
+          <Icon name="upload" :size="20" />
         </button>
         <button class="icon-btn" @click="router.push('/settings')" aria-label="设置">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
+          <Icon name="settings" :size="20" />
         </button>
       </div>
     </header>
 
     <div class="search">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="11" cy="11" r="8"></circle>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-      </svg>
+      <Icon name="search" :size="18" />
       <input v-model="keyword" placeholder="搜索角色、介绍…" />
+    </div>
+
+    <div class="luck-card" :style="{ background: luck.grad }">
+      <div class="luck-left">
+        <span class="luck-emoji">{{ luck.emoji }}</span>
+        <div>
+          <div class="luck-lv">今日运势 · {{ luck.lv }}</div>
+          <div class="luck-text">{{ luck.text }}</div>
+        </div>
+      </div>
+      <span class="luck-tag">{{ dateKey.split('-').slice(1).join('/') }}</span>
+    </div>
+
+    <div v-if="recents.length" class="recent">
+      <div class="sec-title">最近聊过</div>
+      <div class="recent-list">
+        <button v-for="r in recents" :key="r.conv.id" class="recent-item" @click="router.push({ path: `/chat/${r.char.id}`, query: { conv: r.conv.id } })">
+          <Avatar :avatar="r.char.avatar" :name="r.char.name" :size="38" />
+          <div class="recent-main">
+            <div class="recent-name">{{ r.char.name }} <span class="recent-conv">{{ r.conv.title }}</span></div>
+            <div class="recent-msg">{{ lastMsgOf(r.conv) }}</div>
+          </div>
+          <Icon name="chevronRight" :size="16" class="recent-arrow" />
+        </button>
+      </div>
     </div>
 
     <div class="tabs">
       <button :class="['chip', { active: tab === 'all' }]" @click="tab = 'all'">全部角色</button>
       <button :class="['chip', { active: tab === 'mine' }]" @click="tab = 'mine'">我的角色</button>
-      <button class="chip new-btn" @click="router.push('/character/new')">+ 新建角色</button>
+      <button :class="['chip', { active: tab === 'fav' }]" @click="tab = 'fav'">收藏</button>
+      <button class="chip new-btn" @click="router.push('/character/new')">
+        <Icon name="plus" :size="14" /> 新建
+      </button>
     </div>
 
     <div v-if="list.length" class="grid">
       <CharacterCard v-for="c in list" :key="c.id" :character="c" />
     </div>
     <div v-else class="empty-tip">
-      {{ keyword ? '没有找到匹配的角色' : tab === 'mine' ? '还没有自己创建的角色，点击上方「新建角色」试试' : '角色列表为空' }}
+      <Icon v-if="tab === 'fav'" name="bookmark" :size="34" class="empty-icon" />
+      <Icon v-else name="mood" :size="34" class="empty-icon" />
+      <p>
+        {{
+          keyword
+            ? '没有找到匹配的角色'
+            : tab === 'mine'
+            ? '还没有自己创建的角色，点击上方「新建」试试'
+            : tab === 'fav'
+            ? '还没有收藏的角色，在角色卡片上点一下星标即可'
+            : '角色列表为空'
+        }}
+      </p>
     </div>
 
     <input ref="importFile" type="file" accept="application/json,.json" style="display:none" @change="onImportFile" />
@@ -122,7 +179,7 @@ function snippet(text) {
     <Sheet :show="searchOpen" title="搜索消息" @close="searchOpen = false">
       <div class="search-inner">
         <div class="search-input">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <Icon name="search" :size="18" />
           <input v-model="searchKw" placeholder="搜索所有角色的对话…" autofocus />
         </div>
         <div v-if="results.length" class="sr-list">
@@ -195,10 +252,115 @@ h1 {
 .search input:focus {
   box-shadow: none;
 }
+.luck-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 18px 0;
+  padding: 13px 16px;
+  border-radius: 16px;
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(124, 108, 255, 0.28);
+  animation: luck-in 0.5s ease both;
+}
+@keyframes luck-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+.luck-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.luck-emoji {
+  font-size: 26px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.luck-lv {
+  font-size: 14px;
+  font-weight: 800;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+.luck-text {
+  font-size: 12px;
+  opacity: 0.95;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.luck-tag {
+  font-size: 11px;
+  opacity: 0.85;
+  background: rgba(255, 255, 255, 0.22);
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.recent {
+  margin: 16px 18px 0;
+}
+.sec-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  padding: 0 2px 8px;
+  letter-spacing: 0.5px;
+}
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  text-align: left;
+  transition: all 0.15s;
+}
+.recent-item:active {
+  background: var(--card-2);
+}
+.recent-main {
+  flex: 1;
+  min-width: 0;
+}
+.recent-name {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recent-conv {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-faint);
+  margin-left: 4px;
+}
+.recent-msg {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.recent-arrow {
+  color: var(--text-faint);
+}
 .tabs {
   display: flex;
   gap: 8px;
-  padding: 0 18px 14px;
+  padding: 14px 18px 12px;
   align-items: center;
 }
 .new-btn {
@@ -206,6 +368,9 @@ h1 {
   background: var(--grad);
   color: #fff;
   border-color: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .grid {
   display: flex;
@@ -285,5 +450,9 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   margin-top: 2px;
+}
+.empty-icon {
+  color: var(--text-faint);
+  margin-bottom: 10px;
 }
 </style>

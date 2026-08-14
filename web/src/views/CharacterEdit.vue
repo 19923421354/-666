@@ -6,6 +6,7 @@ import { STYLES } from '../engine/offline'
 import { GRADIENT_PRESETS } from '../data/presets'
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
+import Icon from '../components/Icon.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -152,7 +153,7 @@ function remove() {
   <div class="page edit">
     <header class="top">
       <button class="icon-btn" @click="router.back()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+        <Icon name="back" :size="20" />
       </button>
       <h2>{{ editing ? '编辑角色' : '新建角色' }}</h2>
       <div style="width: 38px"></div>
@@ -168,7 +169,14 @@ function remove() {
           <div class="grad-row">
             <button v-for="g in GRADIENT_PRESETS" :key="g[0]" class="grad" :style="{ background: `linear-gradient(135deg, ${g[0]}, ${g[1]})` }" @click="pickGradient(g)"></button>
           </div>
-          <button class="btn btn-ghost btn-sm" @click="fileInput.click()">上传图片头像</button>
+          <div class="avatar-ops">
+            <button class="btn btn-ghost btn-sm" @click="pickGradient(GRADIENT_PRESETS[Math.floor(Math.random() * GRADIENT_PRESETS.length)])">
+              <Icon name="refresh" :size="14" /> 随机配色
+            </button>
+            <button class="btn btn-ghost btn-sm" @click="fileInput.click()">
+              <Icon name="upload" :size="14" /> 上传图片
+            </button>
+          </div>
         </template>
         <template v-else>
           <input ref="fileInput" type="file" accept="image/*" style="display:none" @change="onAvatarUpload" />
@@ -280,6 +288,16 @@ function remove() {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
+}
+.avatar-ops {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.avatar-ops .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .grad {
   width: 30px;

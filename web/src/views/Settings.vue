@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { db, exportAll, importAll, resetAll } from '../store'
 import { STYLES } from '../engine/offline'
 import { APP_VERSION, checkUpdate, downloadAndInstall } from '../engine/update'
+import Icon from '../components/Icon.vue'
 
 const router = useRouter()
 const importOpen = ref(false)
@@ -29,6 +30,16 @@ const themeOpts = [
   { id: 'dark', label: '深色' },
   { id: 'light', label: '浅色' },
 ]
+
+const ttsRateOpts = [0.75, 1, 1.25, 1.5, 1.75]
+const ttsPitchOpts = [0.5, 0.75, 1, 1.25, 1.5]
+
+function fmtRate(r) {
+  return r === 1 ? '正常' : r < 1 ? '慢 ' + r : '快 ' + r
+}
+function fmtPitch(p) {
+  return p === 1 ? '正常' : p < 1 ? '低 ' + p : '高 ' + p
+}
 
 async function doCheck() {
   checkState.value = 'checking'
@@ -99,7 +110,7 @@ function doReset() {
   <div class="page settings">
     <header class="top">
       <button class="icon-btn" @click="router.back()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
+        <Icon name="back" :size="20" />
       </button>
       <h2>设置</h2>
       <div style="width: 38px"></div>
@@ -109,7 +120,11 @@ function doReset() {
       <div class="group-title">对话引擎</div>
       <div class="opts">
         <button v-for="p in providers" :key="p.id" :class="['opt', { active: db.settings.provider === p.id }]" @click="db.settings.provider = p.id">
-          <div class="opt-name">{{ p.name }}</div>
+          <div class="opt-head">
+            <Icon :name="p.id === 'local' ? 'zap' : p.id === 'offline' ? 'sparkles' : p.id === 'ollama' ? 'memory' : 'globe'" :size="16" class="opt-ico" />
+            <div class="opt-name">{{ p.name }}</div>
+            <Icon v-if="db.settings.provider === p.id" name="check" :size="16" class="opt-check" />
+          </div>
           <div class="opt-desc">{{ p.desc }}</div>
         </button>
       </div>
@@ -192,6 +207,21 @@ function doReset() {
         <span>语音朗读</span>
         <button class="switch" :class="{ on: db.settings.tts.enabled }" @click="db.settings.tts.enabled = !db.settings.tts.enabled"><i></i></button>
       </div>
+      <template v-if="db.settings.tts.enabled">
+        <div class="row">
+          <span>朗读语速</span>
+          <div class="seg">
+            <button v-for="r in ttsRateOpts" :key="r" :class="{ on: db.settings.tts.rate === r }" @click="db.settings.tts.rate = r">{{ fmtRate(r) }}</button>
+          </div>
+        </div>
+        <div class="row">
+          <span>朗读音调</span>
+          <div class="seg">
+            <button v-for="p in ttsPitchOpts" :key="p" :class="{ on: db.settings.tts.pitch === p }" @click="db.settings.tts.pitch = p">{{ fmtPitch(p) }}</button>
+          </div>
+        </div>
+        <div class="hint" style="padding-bottom: 8px">开启后，AI 回复会自动朗读，也可在每条消息下点「朗读」单独播放。</div>
+      </template>
       <div class="row">
         <span>我的称呼</span>
         <input class="inline-input" v-model="db.settings.userName" maxlength="8" placeholder="例如：阿明" />
@@ -201,14 +231,14 @@ function doReset() {
     <div class="group">
       <div class="group-title">数据管理</div>
       <button class="row-btn" @click="doExport">
-        <span>导出备份</span><span class="arrow">›</span>
+        <span><Icon name="download" :size="16" /> 导出备份</span><span class="arrow">›</span>
       </button>
       <button class="row-btn" @click="fileInput.click()">
-        <span>导入备份</span><span class="arrow">›</span>
+        <span><Icon name="upload" :size="16" /> 导入备份</span><span class="arrow">›</span>
       </button>
       <input ref="fileInput" type="file" accept="application/json,.json" style="display:none" @change="onImportFile" />
       <button class="row-btn danger" @click="resetOpen = true">
-        <span>清空所有数据</span><span class="arrow">›</span>
+        <span><Icon name="trash" :size="16" /> 清空所有数据</span><span class="arrow">›</span>
       </button>
       <div v-if="importMsg" class="import-msg">{{ importMsg }}</div>
     </div>
@@ -221,17 +251,15 @@ function doReset() {
         <p>内容仅供娱乐，AI 回复由程序生成，不构成任何建议。</p>
       </div>
       <button class="row-btn" @click="doCheck">
-        <span>{{ checkState === 'checking' ? '正在检查更新…' : '检查更新' }}</span>
+        <span><Icon name="refresh" :size="16" /> {{ checkState === 'checking' ? '正在检查更新…' : '检查更新' }}</span>
         <span class="arrow">{{ checkState === 'checking' ? '…' : '›' }}</span>
       </button>
       <button class="row-btn" @click="router.push('/donate')">
-        <span>赞赏支持开发者</span><span class="arrow">›</span>
+        <span><Icon name="heart" :size="16" /> 赞赏支持开发者</span><span class="arrow">›</span>
       </button>
     </div>
 
     <div class="bottom-space"></div>
-
-    <div class="fixed-save" v-if="false"></div>
 
     <div class="sheet-mask" v-if="resetOpen" @click="resetOpen = false"></div>
     <div class="sheet mini" v-if="resetOpen">
@@ -310,14 +338,30 @@ function doReset() {
   border-color: var(--accent-a);
   background: rgba(124, 108, 255, 0.1);
 }
+.opt-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.opt-ico {
+  color: var(--text-faint);
+}
+.opt.active .opt-ico {
+  color: var(--accent-a);
+}
 .opt-name {
   font-weight: 600;
   font-size: 14px;
+  flex: 1;
+}
+.opt-check {
+  color: var(--accent-a);
 }
 .opt-desc {
   font-size: 12px;
   color: var(--text-dim);
   margin-top: 2px;
+  padding-left: 24px;
 }
 .field {
   margin-bottom: 12px;
@@ -392,6 +436,11 @@ function doReset() {
   padding: 12px 2px;
   font-size: 14px;
   border-bottom: 1px solid var(--line);
+}
+.row-btn span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .row-btn:last-child {
   border-bottom: none;
@@ -472,12 +521,15 @@ function doReset() {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 3px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .seg button {
   padding: 5px 10px;
   font-size: 12px;
   border-radius: 7px;
   color: var(--text-dim);
+  white-space: nowrap;
 }
 .seg button.on {
   background: var(--grad);
