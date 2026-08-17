@@ -177,6 +177,42 @@ export function toggleConversationFav(charId, convId) {
   if (conv) conv.fav = !conv.fav
 }
 
+export function toggleMessageBookmark(charId, convId, msgId) {
+  const convs = charConversations(charId)
+  const conv = convs.list.find((c) => c.id === convId)
+  if (!conv) return
+  const m = conv.messages.find((x) => x.id === msgId)
+  if (m) m.bookmarked = !m.bookmarked
+}
+
+// 会话内搜索消息
+export function searchInConversation(charId, convId, keyword) {
+  const k = (keyword || '').trim().toLowerCase()
+  const convs = db.conversations[charId]
+  if (!k || !convs || !convs.list) return []
+  const conv = convs.list.find((c) => c.id === convId)
+  if (!conv || !conv.messages) return []
+  const out = []
+  conv.messages.forEach((m, i) => {
+    if (m.content && m.content.toLowerCase().includes(k)) out.push({ msg: m, index: i })
+  })
+  return out
+}
+
+// 该角色的全部书签消息
+export function bookmarkedMessages(charId) {
+  const convs = db.conversations[charId]
+  if (!convs || !convs.list) return []
+  const out = []
+  for (const conv of convs.list) {
+    if (!conv.messages) continue
+    for (const m of conv.messages) {
+      if (m.bookmarked) out.push({ conv, msg: m })
+    }
+  }
+  return out
+}
+
 export function toggleConversationPin(charId, convId) {
   const convs = charConversations(charId)
   const conv = convs.list.find((c) => c.id === convId)
@@ -195,6 +231,17 @@ export function deleteConversation(charId, convId) {
   if (convs.activeId === convId) {
     convs.activeId = convs.list.length ? convs.list[0].id : null
   }
+}
+
+export function clearConversation(charId, convId) {
+  const convs = charConversations(charId)
+  const conv = convs.list.find((c) => c.id === convId)
+  if (!conv) return
+  const char = db.characters.find((c) => c.id === charId)
+  conv.messages = [
+    { id: uid(), role: 'assistant', content: (char && char.greeting) || '你好呀', ts: Date.now() },
+  ]
+  conv.updatedAt = Date.now()
 }
 
 export function renameConversation(charId, convId, title) {

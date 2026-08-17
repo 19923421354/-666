@@ -1,7 +1,7 @@
 # 星语 AI · Xingyu AI
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.5.0-purple)](https://github.com/19923421354/xingyu/releases)
+[![Version](https://img.shields.io/badge/version-1.6.0-purple)](https://github.com/19923421354/xingyu/releases)
 [![Vue](https://img.shields.io/badge/Vue-3.x-42b883.svg)](https://vuejs.org)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Web-lightgrey.svg)]()
 
@@ -53,7 +53,7 @@
 bash scripts/build-apk.sh
 ```
 
-产物输出到 `dist/星语AI-v1.5.0.apk`，传到手机安装（需允许「安装未知来源应用」）即可直接使用。
+产物输出到 `dist/星语AI-v1.6.0.apk`，传到手机安装（需允许「安装未知来源应用」）即可直接使用。
 
 ### 桌面版
 

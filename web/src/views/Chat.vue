@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { db, charConversations, getActiveConversation, getActiveMessages, addMessage, newConversation, setActiveConversation, deleteConversation, renameConversation, updateMessage, uid, getProfile, removeSummary, clearSummaries, toggleConversationFav, toggleConversationPin, recordActivity } from '../store'
+import { db, charConversations, getActiveConversation, getActiveMessages, addMessage, newConversation, setActiveConversation, deleteConversation, clearConversation, renameConversation, updateMessage, uid, getProfile, removeSummary, clearSummaries, toggleConversationFav, toggleConversationPin, toggleMessageBookmark, bookmarkedMessages, searchInConversation, recordActivity } from '../store'
 import Avatar from '../components/Avatar.vue'
 import Sheet from '../components/Sheet.vue'
 import MarkdownText from '../components/MarkdownText.vue'
@@ -40,6 +40,11 @@ const toastMsg = ref('')
 const editId = ref(null)
 const editText = ref('')
 const listening = ref(false)
+const searchOpen = ref(false)
+const searchKw = ref('')
+const bookmarksOpen = ref(false)
+const emojiOpen = ref(false)
+const EMOJIS = ['😊', '😂', '🥰', '😭', '😮', '😤', '😴', '🥺', '🤔', '😳', '😎', '🤗', '💖', '✨', '🔥', '🌙', '☀️', '🌸', '🐱', '🐶', '🎮', '🍜', '☕', '🎵']
 let toastTimer = null
 let recognition = null
 
@@ -206,6 +211,15 @@ function copyText(text) {
   }
 }
 
+function snippetConv(text) {
+  const k = searchKw.value.trim().toLowerCase()
+  const t = text || ''
+  const idx = t.toLowerCase().indexOf(k)
+  if (idx < 0) return t.slice(0, 50)
+  const start = Math.max(0, idx - 8)
+  return (start > 0 ? '…' : '') + t.slice(start, idx + k.length + 20) + (start + k.length + 20 < t.length ? '…' : '')
+}
+
 function exportConversation() {
   const conv = getActiveConversation(char.value)
   const name = char.value.name
@@ -360,8 +374,8 @@ const onKeydown = (e) => {
     return
   }
   if (e.key === 'Escape') {
-    if (renameOpen.value || confirmOpen.value || memOpen.value || sheetOpen.value) {
-      ;[renameOpen, confirmOpen, memOpen, sheetOpen].forEach((r) => (r.value = false))
+    if (renameOpen.value || confirmOpen.value || memOpen.value || sheetOpen.value || searchOpen.value || bookmarksOpen.value) {
+      ;[renameOpen, confirmOpen, memOpen, sheetOpen, searchOpen, bookmarksOpen].forEach((r) => (r.value = false))
     }
   }
 }
@@ -451,6 +465,13 @@ function stopVoice() {
   listening.value = false
 }
 
+function insertEmoji(e) {
+  input.value += e
+  emojiOpen.value = false
+  autoGrow({ target: taRef.value })
+  taRef.value && taRef.value.focus()
+}
+
 // 快捷回复建议
 const SUGGEST = {
   cute: ['给我讲个开心的小故事嘛', '我最近有点累，想被安慰', '如果我养了一只猫，你会吃醋吗'],
@@ -473,6 +494,43 @@ const suggestions = computed(() => {
 })
 
 const quickPhrases = computed(() => (db.settings.quickPhrases || []).filter((p) => p && p.trim()))
+
+const convSearchResults = computed(() => {
+  const conv = getActiveConversation(char.value)
+  return searchInConversation(char.value.id, conv.id, searchKw.value)
+})
+
+const bookmarks = computed(() => bookmarkedMessages(char.value.id))
+
+function goConvResult(r) {
+  searchOpen.value = false
+  searchKw.value = ''
+  nextTick(() => {
+    const el = listRef.value
+    if (!el) return
+    const target = el.querySelector(`[data-msg-id="${r.msg.id}"]`)
+    if (target) {
+      target.scrollIntoView({ block: 'center' })
+      target.classList.add('hl')
+      setTimeout(() => target.classList.remove('hl'), 1800)
+    }
+  })
+}
+
+function goBookmark(b) {
+  bookmarksOpen.value = false
+  setActiveConversation(char.value.id, b.conv.id)
+  nextTick(() => {
+    const el = listRef.value
+    if (!el) return
+    const target = el.querySelector(`[data-msg-id="${b.msg.id}"]`)
+    if (target) {
+      target.scrollIntoView({ block: 'center' })
+      target.classList.add('hl')
+      setTimeout(() => target.classList.remove('hl'), 1800)
+    }
+  })
+}
 
 onBeforeUnmount(() => {
   stopSpeak()
@@ -499,6 +557,12 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="actions">
+        <button class="icon-btn" @click="searchOpen = true" aria-label="会话内搜索">
+          <Icon name="search" :size="20" />
+        </button>
+        <button class="icon-btn" :class="{ 'has-bm': bookmarks.length }" @click="bookmarksOpen = true" aria-label="书签">
+          <Icon name="bookmark" :size="20" :filled="bookmarks.length > 0" />
+        </button>
         <button class="icon-btn" @click="memOpen = true" aria-label="记忆">
           <Icon name="memory" :size="20" />
         </button>
@@ -547,6 +611,7 @@ onBeforeUnmount(() => {
               <span class="time">{{ formatTime(m.ts) }}</span>
               <button v-if="m.role === 'assistant' && ttsSupported()" class="mini" @click="playTts(m)">朗读</button>
               <button class="mini" @click="copyText(m.content)">复制</button>
+              <button :class="['mini', { bm: m.bookmarked }]" @click="toggleMessageBookmark(char.id, getActiveConversation(char).id, m.id)">书签</button>
               <button v-if="m.role === 'assistant'" class="mini" @click="regenerate">重试</button>
               <button v-if="m.role === 'user'" class="mini" @click="startEdit(idx)">编辑</button>
               <button class="mini danger" @click="removeMessage(idx)">删除</button>
@@ -593,6 +658,9 @@ onBeforeUnmount(() => {
       <button class="mic-btn" :class="{ on: listening }" @click="toggleVoice" aria-label="语音输入">
         <Icon :name="listening ? 'micOff' : 'mic'" :size="20" />
       </button>
+      <button v-if="!generating" class="emoji-btn" @click="emojiOpen = !emojiOpen" aria-label="表情">
+        <span class="emoji-face">😊</span>
+      </button>
       <button v-if="!generating" class="send-btn" :disabled="!input.trim()" @click="send" aria-label="发送">
         <Icon name="send" :size="20" />
       </button>
@@ -600,6 +668,42 @@ onBeforeUnmount(() => {
         <Icon name="stop" :size="18" />
       </button>
     </div>
+
+    <transition name="slide-up">
+      <div v-if="emojiOpen" class="emoji-panel">
+        <button v-for="e in EMOJIS" :key="e" class="emoji-item" @click="insertEmoji(e)">{{ e }}</button>
+      </div>
+    </transition>
+
+    <Sheet :show="searchOpen" title="搜索这段对话" @close="searchOpen = false">
+      <div class="search-inner">
+        <div class="search-input">
+          <Icon name="search" :size="18" />
+          <input v-model="searchKw" placeholder="搜索当前对话的消息…" autofocus />
+        </div>
+        <div v-if="convSearchResults.length" class="sr-list">
+          <button v-for="(r, i) in convSearchResults" :key="i" class="sr-item" @click="goConvResult(r)">
+            <span class="sr-role">{{ r.msg.role === 'user' ? (db.settings.userName || '我') : char.name }}</span>
+            <span class="sr-snippet">{{ snippetConv(r.msg.content) }}</span>
+          </button>
+        </div>
+        <div v-else-if="searchKw.trim()" class="empty-tip">没有找到匹配的消息</div>
+        <div v-else class="empty-tip">输入关键词，搜索当前对话</div>
+      </div>
+    </Sheet>
+
+    <Sheet :show="bookmarksOpen" title="书签消息" @close="bookmarksOpen = false">
+      <div v-if="bookmarks.length" class="bm-list">
+        <button v-for="b in bookmarks" :key="b.msg.id" class="bm-item" @click="goBookmark(b)">
+          <div class="bm-head">
+            <Icon name="bookmark" :size="12" class="bm-ico" />
+            <span class="bm-title">{{ b.conv.title }}</span>
+          </div>
+          <div class="bm-text">{{ b.msg.content.slice(0, 80) }}</div>
+        </button>
+      </div>
+      <div v-else class="empty-tip">还没有书签消息。在消息下方点「书签」即可收藏。</div>
+    </Sheet>
 
     <Sheet :show="sheetOpen" title="对话记录" @close="sheetOpen = false">
       <div class="conv-list">
@@ -624,6 +728,9 @@ onBeforeUnmount(() => {
             <button class="icon-btn tiny" @click.stop="openRename(conv)" aria-label="重命名">
               <Icon name="edit" :size="16" />
             </button>
+            <button class="icon-btn tiny" @click.stop="askConfirm('清空这段对话的消息？', () => clearConversation(char.id, conv.id))" aria-label="清空">
+              <Icon name="sparkles" :size="16" />
+            </button>
             <button class="icon-btn tiny danger" @click.stop="askConfirm('删除这段对话？', () => removeConversation(conv.id))" aria-label="删除">
               <Icon name="trash" :size="16" />
             </button>
@@ -642,6 +749,9 @@ onBeforeUnmount(() => {
           </button>
           <button class="icon-btn tiny" @click.stop="openRename(conv)" aria-label="重命名">
             <Icon name="edit" :size="16" />
+          </button>
+          <button class="icon-btn tiny" @click.stop="askConfirm('清空这段对话的消息？', () => clearConversation(char.id, conv.id))" aria-label="清空">
+            <Icon name="sparkles" :size="16" />
           </button>
           <button class="icon-btn tiny danger" @click.stop="askConfirm('删除这段对话？', () => removeConversation(conv.id))" aria-label="删除">
             <Icon name="trash" :size="16" />
@@ -1027,6 +1137,46 @@ export default {
   border-color: transparent;
   animation: mic-pulse 1.4s infinite;
 }
+.emoji-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.emoji-btn:active {
+  transform: scale(0.9);
+}
+.emoji-face {
+  font-size: 18px;
+  line-height: 1;
+}
+.emoji-panel {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-soft);
+  border-top: 1px solid var(--line);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.emoji-item {
+  font-size: 22px;
+  padding: 6px;
+  border-radius: 10px;
+  line-height: 1;
+  text-align: center;
+}
+.emoji-item:active {
+  background: var(--glass);
+  transform: scale(1.15);
+}
 @keyframes mic-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 95, 162, 0.4); }
   50% { box-shadow: 0 0 0 8px rgba(255, 95, 162, 0); }
@@ -1123,6 +1273,106 @@ export default {
   text-align: center;
   font-size: 16px;
   padding: 8px 0 2px;
+}
+.search-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 6px;
+}
+.search-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--text-faint);
+}
+.search-input input {
+  border: none;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+.search-input input:focus {
+  box-shadow: none;
+}
+.sr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.sr-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  text-align: left;
+}
+.sr-item:active {
+  background: var(--card-2);
+}
+.sr-role {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-a);
+}
+.sr-snippet {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+.bm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.bm-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  text-align: left;
+}
+.bm-item:active {
+  background: var(--card-2);
+}
+.bm-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.bm-ico {
+  color: var(--accent-a);
+}
+.bm-title {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.bm-text {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+  word-break: break-all;
+}
+.mini.bm {
+  color: var(--accent-a);
+  font-weight: 700;
+}
+.has-bm {
+  color: var(--accent-a);
 }
 .summarize-btn {
   display: flex;

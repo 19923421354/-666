@@ -7,8 +7,8 @@ android {
         applicationId "com.xingyu.chat"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 6
-        versionName "1.5.0"
+        versionCode 7
+        versionName "1.6.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -18,12 +18,12 @@ android {
     }
     signingConfigs {
         release {
-            def ks = file('../keystore/huanyu.keystore')
+            def ks = file('../keystore/xingyu.keystore')
             if (ks.exists()) {
                 storeFile ks
-                storePassword 'huanyu123456'
-                keyAlias 'huanyu'
-                keyPassword 'huanyu123456'
+                storePassword 'xingyu123456'
+                keyAlias 'xingyu'
+                keyPassword 'xingyu123456'
             }
         }
     }
